@@ -10,10 +10,20 @@ declare module "elkjs/lib/elk.bundled.js" {
     edges?: ElkExtendedEdge[];
     layoutOptions?: Record<string, string>;
   }
+  export interface ElkPoint {
+    x: number;
+    y: number;
+  }
+  export interface ElkEdgeSection {
+    startPoint: ElkPoint;
+    endPoint: ElkPoint;
+    bendPoints?: ElkPoint[];
+  }
   export interface ElkExtendedEdge {
     id: string;
     sources: string[];
     targets: string[];
+    sections?: ElkEdgeSection[];
   }
   export default class ELK {
     constructor(opts?: unknown);

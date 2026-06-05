@@ -20,6 +20,7 @@ export interface StateNodeData extends Record<string, unknown> {
 
 export interface EdgeData extends Record<string, unknown> {
   active: boolean;
+  points?: Pt[]; // ELK-routed orthogonal bend points (absolute flow coords)
 }
 
 function leafHeight(rows: number): number {
@@ -73,9 +74,15 @@ function buildElk(
       "elk.algorithm": "layered",
       "elk.direction": "DOWN",
       "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
-      "elk.spacing.nodeNode": "36",
-      "elk.padding": "[top=20,left=20,bottom=20,right=20]",
+      // Orthogonal routing with bend points → clean, non-overlapping wires that
+      // the custom edge follows (instead of React Flow's straight beziers).
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "70",
+      "elk.spacing.nodeNode": "46",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "26",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "16",
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      "elk.padding": "[top=24,left=24,bottom=24,right=24]",
     },
     children: (kids.get("") ?? []).map(make),
     edges: graph.edges.map((e) => ({
@@ -94,11 +101,25 @@ export interface Positioned {
   parentId: string;
 }
 
-function flatten(root: ElkNode): Map<string, Positioned> {
-  const out = new Map<string, Positioned>();
-  const walk = (n: ElkNode, parentId: string) => {
+export interface Pt {
+  x: number;
+  y: number;
+}
+
+export interface Layout {
+  pos: Map<string, Positioned>;
+  edgePts: Map<string, Pt[]>; // routed bend points, absolute flow coords
+}
+
+function flatten(root: ElkNode): Layout {
+  const pos = new Map<string, Positioned>();
+  const edgePts = new Map<string, Pt[]>();
+  // baseX/baseY = absolute origin of n's container; n.x/n.y are relative to it.
+  const walk = (n: ElkNode, parentId: string, baseX: number, baseY: number) => {
+    const absX = baseX + (n.x ?? 0);
+    const absY = baseY + (n.y ?? 0);
     if (n.id !== "root") {
-      out.set(n.id, {
+      pos.set(n.id, {
         x: n.x ?? 0,
         y: n.y ?? 0,
         width: n.width ?? NODE_W,
@@ -106,10 +127,20 @@ function flatten(root: ElkNode): Map<string, Positioned> {
         parentId,
       });
     }
-    for (const c of n.children ?? []) walk(c, n.id === "root" ? "" : n.id);
+    // Edges declared in this node: section coords are relative to n's origin.
+    for (const e of n.edges ?? []) {
+      const sec = e.sections?.[0];
+      if (!sec) continue;
+      const raw = [sec.startPoint, ...(sec.bendPoints ?? []), sec.endPoint];
+      edgePts.set(
+        e.id,
+        raw.map((p) => ({ x: absX + p.x, y: absY + p.y })),
+      );
+    }
+    for (const c of n.children ?? []) walk(c, n.id === "root" ? "" : n.id, absX, absY);
   };
-  walk(root, "");
-  return out;
+  walk(root, "", 0, 0);
+  return { pos, edgePts };
 }
 
 export interface FlowResult {
@@ -117,9 +148,8 @@ export interface FlowResult {
   edges: Edge<EdgeData>[];
 }
 
-// layoutGraph runs ELK and returns positions. Manual overrides (localStorage)
-// are applied by the caller after this.
-export async function layoutGraph(graph: Graph): Promise<Map<string, Positioned>> {
+// layoutGraph runs ELK and returns node positions + routed edge points.
+export async function layoutGraph(graph: Graph): Promise<Layout> {
   const kids = childrenOf(graph);
   const rows = rowsBySource(graph);
   const res = await elk.layout(buildElk(graph, kids, rows));
@@ -128,9 +158,10 @@ export async function layoutGraph(graph: Graph): Promise<Map<string, Positioned>
 
 export function toFlow(
   graph: Graph,
-  pos: Map<string, Positioned>,
+  layout: Layout,
   active: { paths: Set<string>; leaves: Set<string> },
 ): FlowResult {
+  const pos = layout.pos;
   const kids = childrenOf(graph);
   const rows = rowsBySource(graph);
 
@@ -168,7 +199,7 @@ export function toFlow(
       type: "transition",
       label: edgeLabel(e),
       markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-      data: { active: sourceActive },
+      data: { active: sourceActive, points: layout.edgePts.get(e.id) },
       animated: sourceActive,
       className: sourceActive ? "edge-active" : undefined,
       zIndex: 10,

@@ -132,6 +132,8 @@ button { font-family: var(--ui); }
 
 /* mesh-wired canvas */
 .react-flow__background.mesh-bg { color: var(--line); opacity: .55; }
+.retidy-btn { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.retidy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* edges */
 .rf-edge { stroke: var(--edge); stroke-width: 1.75; }
