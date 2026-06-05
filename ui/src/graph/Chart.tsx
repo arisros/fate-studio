@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Background,
   BackgroundVariant,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -14,7 +15,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { Graph } from "../types";
-import { layoutGraph, toFlow, type EdgeData, type Positioned, type StateNodeData } from "./flow";
+import { layoutGraph, toFlow, type EdgeData, type StateNodeData } from "./flow";
 import { activeFromPath } from "./active";
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
@@ -39,22 +40,22 @@ function loadOverrides(machine: string): Record<string, { x: number; y: number }
 function ChartInner({ machine, graph, activePath, colorMode }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<StateNodeData>>([]);
   const [edges, setEdges] = useEdgesState<Edge<EdgeData>>([]);
-  const layoutRef = useRef<Map<string, Positioned>>(new Map());
+  // version bumps force a fresh ELK layout (the "re-tidy" button clears the
+  // saved drag positions and re-runs auto-layout).
+  const [version, setVersion] = useState(0);
   const active = useMemo(() => activeFromPath(activePath), [activePath]);
 
-  // Layout once per graph (ELK is async). Apply persisted drag overrides.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const pos = await layoutGraph(graph);
+      const layout = await layoutGraph(graph);
       const overrides = loadOverrides(machine);
       for (const [id, o] of Object.entries(overrides)) {
-        const p = pos.get(id);
-        if (p) pos.set(id, { ...p, x: o.x, y: o.y });
+        const p = layout.pos.get(id);
+        if (p) layout.pos.set(id, { ...p, x: o.x, y: o.y });
       }
       if (cancelled) return;
-      layoutRef.current = pos;
-      const { nodes: ns, edges: es } = toFlow(graph, pos, activeFromPath(activePath));
+      const { nodes: ns, edges: es } = toFlow(graph, layout, activeFromPath(activePath));
       setNodes(ns);
       setEdges(es);
     })();
@@ -62,9 +63,9 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, machine]);
+  }, [graph, machine, version]);
 
-  // Re-highlight on active change — no relayout, just toggle flags.
+  // Re-highlight on active change — no relayout; preserve routed edge points.
   useEffect(() => {
     setNodes((ns: Node<StateNodeData>[]) =>
       ns.map((n: Node<StateNodeData>) => {
@@ -79,18 +80,16 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       es.map((e: Edge<EdgeData>) => {
         const srcPath = graph.nodes.find((g) => g.id === e.source)?.path ?? "";
         const on = active.leaves.has(srcPath);
-        return { ...e, data: { active: on }, animated: on, className: on ? "edge-active" : undefined };
+        return { ...e, data: { ...e.data, active: on }, animated: on, className: on ? "edge-active" : undefined };
       }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
-  // Persist positions after a drag.
   const handleChanges = (changes: NodeChange<Node<StateNodeData>>[]) => {
     onNodesChange(changes);
     const dragEnd = changes.some((c) => c.type === "position" && c.dragging === false);
     if (dragEnd) {
-      // Read back current positions on next tick.
       requestAnimationFrame(() => {
         setNodes((ns: Node<StateNodeData>[]) => {
           const ov: Record<string, { x: number; y: number }> = {};
@@ -106,6 +105,15 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
     }
   };
 
+  const retidy = () => {
+    try {
+      localStorage.removeItem(posKey(machine));
+    } catch {
+      /* ignore */
+    }
+    setVersion((v) => v + 1);
+  };
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -115,10 +123,15 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       onNodesChange={handleChanges}
       colorMode={colorMode}
       fitView
-      minZoom={0.2}
+      minZoom={0.1}
       maxZoom={2.5}
       proOptions={{ hideAttribution: true }}
     >
+      <Panel position="top-left">
+        <button className="retidy-btn" onClick={retidy} title="re-run auto-layout">
+          ↺ re-tidy
+        </button>
+      </Panel>
       <Background variant={BackgroundVariant.Cross} gap={26} size={3} className="mesh-bg" />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable />
