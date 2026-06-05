@@ -88,6 +88,21 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
 
   const handleChanges = (changes: NodeChange<Node<StateNodeData>>[]) => {
     onNodesChange(changes);
+
+    // While a node is being dragged, its connected edges must follow it — so
+    // drop their static ELK route and let React Flow recompute a live path.
+    const moving = new Set<string>();
+    for (const c of changes) if (c.type === "position" && c.dragging) moving.add(c.id);
+    if (moving.size) {
+      setEdges((es: Edge<EdgeData>[]) =>
+        es.map((e: Edge<EdgeData>) =>
+          e.data?.points && (moving.has(e.source) || moving.has(e.target))
+            ? { ...e, data: { ...e.data, points: undefined } }
+            : e,
+        ),
+      );
+    }
+
     const dragEnd = changes.some((c) => c.type === "position" && c.dragging === false);
     if (dragEnd) {
       requestAnimationFrame(() => {
