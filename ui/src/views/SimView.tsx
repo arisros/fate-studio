@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Graph, LiveSnapshot } from "../types";
 import { Chart } from "../graph/Chart";
@@ -23,7 +23,7 @@ function sendableEvents(graph: Graph, leaves: Set<string>): Set<string> {
 export function SimView() {
   const { name = "" } = useParams();
   const [graph, setGraph] = useState<Graph | null>(null);
-  const [mode, toggleTheme] = useTheme();
+  const [mode] = useTheme();
   const toast = useToast();
   const { snapshot, conn } = useSimStream(name);
   const [timeline, setTimeline] = useState<string[]>([]);
@@ -112,7 +112,6 @@ export function SimView() {
   return (
     <div className="sim-view">
       <div className="subbar">
-        <Link to="/" className="back">← index</Link>
         <span className="mtitle">{name}</span>
         <StatusBadge status={snap?.status ?? "connecting"} conn={conn} />
         <div className="spacer" />
@@ -120,7 +119,6 @@ export function SimView() {
         <button className="btn ghost" onClick={onReset}>reset</button>
         <button className="btn ghost" onClick={onImport}>import</button>
         <a className="btn ghost" href={api.exportURL(name)}>export</a>
-        <button className="btn ghost" onClick={toggleTheme}>{mode === "dark" ? "☀" : "☾"}</button>
       </div>
 
       <div className="sim-body">
