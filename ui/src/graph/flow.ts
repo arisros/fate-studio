@@ -169,6 +169,7 @@ export function toFlow(
       label: edgeLabel(e),
       markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
       data: { active: sourceActive },
+      animated: sourceActive,
       className: sourceActive ? "edge-active" : undefined,
       zIndex: 10,
     };

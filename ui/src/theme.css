@@ -60,10 +60,11 @@ button { font-family: var(--ui); }
 .index { padding: 28px; overflow: auto; }
 .lede { color: var(--muted); margin-top: 0; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; transition: border-color .15s, transform .1s, box-shadow .15s; }
+.card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 .card-name { font-weight: 600; font-size: 16px; }
 .card-sum { color: var(--muted); font-size: 13px; margin: 6px 0 14px; min-height: 32px; }
-.card-links { display: flex; gap: 8px; }
+.card-go { font-size: 13px; font-weight: 600; color: var(--accent); }
 .err-box { color: var(--danger); background: rgba(255,107,107,0.1); padding: 10px 12px; border-radius: 8px; }
 
 /* sub bar */
@@ -129,9 +130,14 @@ button { font-family: var(--ui); }
 .node.history { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--panel-2); font-weight: 700; }
 .node.history .hist { color: var(--accent); }
 
+/* mesh-wired canvas */
+.react-flow__background.mesh-bg { color: var(--line); opacity: .55; }
+
 /* edges */
-.rf-edge { stroke: var(--edge); stroke-width: 1.5; }
+.rf-edge { stroke: var(--edge); stroke-width: 1.75; }
 .rf-edge.active { stroke: var(--edge-active); stroke-width: 2.5; }
+.react-flow__edge.animated .react-flow__edge-path { stroke-dasharray: 6; animation: dashflow .6s linear infinite; }
+@keyframes dashflow { to { stroke-dashoffset: -12; } }
 .edge-label { background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-family: var(--mono); font-size: 10px; color: var(--muted); pointer-events: none; }
 .edge-label.active { color: var(--accent); border-color: var(--accent); }
 .react-flow__edge-path { stroke: var(--edge); }
