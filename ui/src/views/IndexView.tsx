@@ -15,20 +15,15 @@ export function IndexView() {
       {err && <p className="err-box">{err}</p>}
       <div className="cards">
         {machines.map((m) => (
-          <div className="card" key={m.name}>
+          <Link
+            className="card"
+            key={m.name}
+            to={m.live ? `/sim/${encodeURIComponent(m.name)}` : `/m/${encodeURIComponent(m.name)}`}
+          >
             <div className="card-name">{m.name}</div>
             <div className="card-sum">{m.summary}</div>
-            <div className="card-links">
-              <Link className="btn ghost" to={`/m/${encodeURIComponent(m.name)}`}>
-                view
-              </Link>
-              {m.live && (
-                <Link className="btn primary" to={`/sim/${encodeURIComponent(m.name)}`}>
-                  ▶ simulate
-                </Link>
-              )}
-            </div>
-          </div>
+            <div className="card-go">{m.live ? "▶ simulate" : "view"} →</div>
+          </Link>
         ))}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import {
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   ReactFlow,
@@ -78,7 +79,7 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       es.map((e: Edge<EdgeData>) => {
         const srcPath = graph.nodes.find((g) => g.id === e.source)?.path ?? "";
         const on = active.leaves.has(srcPath);
-        return { ...e, data: { active: on }, className: on ? "edge-active" : undefined };
+        return { ...e, data: { active: on }, animated: on, className: on ? "edge-active" : undefined };
       }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,7 +119,7 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       maxZoom={2.5}
       proOptions={{ hideAttribution: true }}
     >
-      <Background gap={18} />
+      <Background variant={BackgroundVariant.Cross} gap={26} size={3} className="mesh-bg" />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable />
     </ReactFlow>
