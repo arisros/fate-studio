@@ -65,12 +65,12 @@ func TestStaticEndpoints(t *testing.T) {
 		code int
 		body string // optional substring
 	}{
-		{"/", 200, `id="root"`},                  // SPA shell
-		{"/api/machines", 200, `"demo"`},          // JSON machine list
-		{"/m/demo", 200, `id="root"`},             // SPA (client renders the view)
-		{"/m/demo/describe", 200, `"demo"`},       // JSON descriptor
-		{"/m/demo/graph", 200, `"nodes"`},         // JSON graph
-		{"/m/demo/state/a", 200, `id="root"`},     // SPA deep link
+		{"/", 200, `id="root"`},               // SPA shell
+		{"/api/machines", 200, `"demo"`},      // JSON machine list
+		{"/m/demo", 200, `id="root"`},         // SPA (client renders the view)
+		{"/m/demo/describe", 200, `"demo"`},   // JSON descriptor
+		{"/m/demo/graph", 200, `"nodes"`},     // JSON graph
+		{"/m/demo/state/a", 200, `id="root"`}, // SPA deep link
 		{"/m/nope", 404, ""},
 		{"/healthz", 200, "ok"},
 		{"/assets/nope.xyz", 404, ""},

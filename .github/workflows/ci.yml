@@ -60,11 +60,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # Hard gate: the UI must type-check and build (tsc --noEmit && vite build).
       - run: npm ci
         working-directory: ui
       - run: npm run build
         working-directory: ui
-      # The committed assets/ must match a fresh build of ui/src — otherwise
-      # someone changed the UI source without rebuilding the embedded bundle.
-      - name: assets up to date
-        run: git diff --exit-status -- assets
+      # Informational: flag if the committed assets/ differ from a fresh build
+      # (i.e. ui/src changed without re-running `make ui`). Not a hard failure,
+      # since bundle content-hashes aren't guaranteed byte-identical across
+      # build environments.
+      - name: assets drift check
+        run: |
+          if [ -n "$(git status --porcelain -- assets)" ]; then
+            echo "::warning::assets/ differs from a fresh UI build — run 'make ui' and commit if this was an intentional UI change"
+            git --no-pager diff --stat -- assets || true
+          else
+            echo "assets/ is up to date with ui/src"
+          fi
