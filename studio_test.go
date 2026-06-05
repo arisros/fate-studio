@@ -109,13 +109,18 @@ func TestServer_HealthzAndIndex(t *testing.T) {
 		t.Errorf("healthz: code=%d body=%q", rr.Code, rr.Body.String())
 	}
 
+	// "/" serves the SPA shell (React app); the machine list is data-driven.
 	rr = httptest.NewRecorder()
 	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
-	if !strings.Contains(rr.Body.String(), "▶ simulate") {
-		t.Error("index should show a simulate link")
+	if !strings.Contains(rr.Body.String(), `id="root"`) {
+		t.Error("index should serve the SPA shell")
 	}
-	if !strings.Contains(rr.Body.String(), "traffic-light") {
-		t.Error("index should list traffic-light")
+
+	// /api/machines is the JSON the React index renders as cards.
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/machines", nil))
+	if !strings.Contains(rr.Body.String(), "traffic-light") || !strings.Contains(rr.Body.String(), `"live":true`) {
+		t.Errorf("/api/machines should list traffic-light as live; got %s", rr.Body.String())
 	}
 }
 
