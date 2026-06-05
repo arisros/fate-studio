@@ -51,3 +51,20 @@ jobs:
         with:
           version: "~> v2"
           args: check
+
+  ui:
+    name: build UI (React Flow) + drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+      # The committed assets/ must match a fresh build of ui/src — otherwise
+      # someone changed the UI source without rebuilding the embedded bundle.
+      - name: assets up to date
+        run: git diff --exit-status -- assets

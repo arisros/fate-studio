@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"strings"
@@ -337,23 +336,11 @@ func writeSnapResponse(w http.ResponseWriter, sess *session) {
 	})
 }
 
-func (s *Server) handleSimPage(w http.ResponseWriter, r *http.Request, name string) {
-	sess, err := s.sessionFor(w, r, name)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	evJSON, _ := json.Marshal(sess.availableEvents())
-	nameJSON, _ := json.Marshal(name)
-	globals := "window.FATE_MACHINE=" + string(nameJSON) + ";window.FATE_EVENTS=" + string(evJSON) + ";"
-
-	w.Header().Set("content-type", "text/html; charset=utf-8")
-	renderShell(w, simShell,
-		html.EscapeString(s.title)+" — "+html.EscapeString(name),
-		html.EscapeString(name),
-		html.EscapeString(name),
-		globals,
-	)
+// handleSimPage serves the SPA shell for /sim/{name}. The session cookie is
+// minted lazily on the first /sim/{name}/stream or POST call (via sessionFor),
+// so the page itself just hands off to the React app.
+func (s *Server) handleSimPage(w http.ResponseWriter, r *http.Request, _ string) {
+	s.handleSPA(w, r)
 }
 
 func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name string) {

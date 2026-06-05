@@ -2,8 +2,6 @@ package studio
 
 import (
 	"encoding/json"
-	"fmt"
-	"html"
 	"net/http"
 	"strings"
 	"time"
@@ -22,6 +20,10 @@ type Entry struct {
 
 // Server is an embeddable statechart studio. Construct with NewServer,
 // register machines with Register, then ListenAndServe or mount Handler.
+//
+// The UI is a React + React Flow single-page app (source under ui/, built with
+// Vite and committed to assets/). The server is a JSON/SSE API + SPA host:
+// machine structure comes from /m/{name}/graph, live state over /sim/{name}/*.
 type Server struct {
 	title   string
 	entries []Entry
@@ -57,7 +59,7 @@ func (s *Server) lookup(name string) (Entry, bool) {
 // Handler returns an http.Handler with all studio routes mounted.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/api/machines", s.handleAPIMachines)
 	mux.HandleFunc("/m/", s.handleMachine)
 	mux.HandleFunc("/sim/", s.handleSimRoute)
 	mux.HandleFunc("/assets/", s.handleAssets)
@@ -65,6 +67,8 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("content-type", "text/plain")
 		_, _ = w.Write([]byte("ok"))
 	})
+	// Catch-all: serve the SPA shell for "/" and any client-routed deep link.
+	mux.HandleFunc("/", s.handleSPA)
 	return mux
 }
 
@@ -80,29 +84,9 @@ func (s *Server) ListenAndServe(addr string) error {
 	return srv.ListenAndServe()
 }
 
-// ----- static handlers -----
-
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	var cards strings.Builder
-	for _, e := range s.entries {
-		sim := ""
-		if e.BuildLive != nil {
-			sim = fmt.Sprintf(`<a class="sim" href="/sim/%s">▶ simulate</a>`, html.EscapeString(e.Name))
-		}
-		fmt.Fprintf(&cards,
-			`<div class="machine-card"><div class="mname">%s</div><div class="msum">%s</div>`+
-				`<div class="mlinks"><a class="view" href="/m/%s">view</a>%s</div></div>`,
-			html.EscapeString(e.Name), html.EscapeString(e.Summary),
-			html.EscapeString(e.Name), sim)
-	}
-	w.Header().Set("content-type", "text/html; charset=utf-8")
-	renderShell(w, welcomeShell, html.EscapeString(s.title), cards.String())
-}
-
+// handleMachine serves the machine's resolved graph and raw descriptor as JSON
+// (consumed by the React Flow canvas). Any other /m/{name}... path returns the
+// SPA shell so the client router can render the machine view.
 func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/m/")
 	if rest == "" {
@@ -116,62 +100,21 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	descriptor := entry.Build()
 
 	if len(parts) >= 2 && parts[1] == "graph" {
-		// Resolved node/edge graph for the studio canvas (laid out by elkjs
-		// client-side). Structure only — active highlight comes from SSE.
+		// Resolved node/edge graph for the studio canvas (laid out by elkjs in
+		// the browser). Structure only — active highlight comes from SSE.
 		w.Header().Set("content-type", "application/json")
-		_ = json.NewEncoder(w).Encode(sc.RenderGraphJSON(descriptor))
+		_ = json.NewEncoder(w).Encode(sc.RenderGraphJSON(entry.Build()))
 		return
 	}
-
 	if len(parts) >= 2 && parts[1] == "describe" {
 		w.Header().Set("content-type", "application/json")
-		b, _ := json.MarshalIndent(descriptor, "", "  ")
+		b, _ := json.MarshalIndent(entry.Build(), "", "  ")
 		_, _ = w.Write(b)
 		return
 	}
 
-	var statePath string
-	if len(parts) >= 3 && parts[1] == "state" {
-		statePath = parts[2]
-	}
-
-	ascii := sc.RenderASCII(descriptor, sc.RenderOptions{Highlight: highlightForActivePath(statePath)})
-	transitions := ""
-	if statePath != "" {
-		transitions = sc.RenderTransitions(descriptor, statePath)
-	}
-
-	simLink := ""
-	if entry.BuildLive != nil {
-		simLink = fmt.Sprintf(` | <a href="/sim/%s">▶ simulate</a>`, html.EscapeString(name))
-	}
-
-	w.Header().Set("content-type", "text/html; charset=utf-8")
-	renderShell(w, pageShell, html.EscapeString(s.title)+" — "+html.EscapeString(name),
-		fmt.Sprintf(`<h1>%s</h1>
-<p><a href="/">&larr; index</a> | <a href="/m/%s/describe">JSON descriptor</a>%s</p>
-<h2>State diagram</h2>
-<pre class="diagram">%s</pre>
-%s
-<h2>Inspect state</h2>
-<form onsubmit="window.location='/m/%s/state/'+document.getElementById('p').value;return false">
-  <label>dot-path: <input id="p" placeholder="e.g. active.main"></label>
-  <button type="submit">view</button>
-</form>`,
-			html.EscapeString(name), html.EscapeString(name), simLink,
-			html.EscapeString(ascii),
-			transitionBlock(transitions, statePath),
-			html.EscapeString(name),
-		))
-}
-
-func transitionBlock(rendered, path string) string {
-	if rendered == "" {
-		return ""
-	}
-	return fmt.Sprintf(`<h2>Transitions from <code>%s</code></h2><pre class="sidebar">%s</pre>`,
-		html.EscapeString(path), html.EscapeString(rendered))
+	// HTML view route (/m/{name}, /m/{name}/state/...): hand off to the SPA.
+	s.handleSPA(w, r)
 }

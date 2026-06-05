@@ -7,6 +7,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -56,8 +57,9 @@ func pathOf(t *testing.T, jsonBody string) string {
 func TestSim_CookieMintedAndPersisted(t *testing.T) {
 	c, base, closeFn := clientFor(t)
 	defer closeFn()
-	// GET the sim page → should Set-Cookie fate_sid.
-	resp, _ := c.Get(base + "/sim/traffic-light")
+	// The first sim API call (here /export) mints + Set-Cookie's fate_sid.
+	// (The /sim page itself is the SPA shell and is session-agnostic.)
+	resp, _ := c.Get(base + "/sim/traffic-light/export")
 	resp.Body.Close()
 	u, _ := url.Parse(base)
 	var found bool
@@ -201,18 +203,26 @@ func TestServer_GraphEndpoint(t *testing.T) {
 	}
 }
 
-// Asset serving — elkjs (the layout engine) replaced mermaid.
+// Asset serving — the SPA shell references content-hashed Vite build files
+// under /assets/; each must resolve from the embedded FS.
 func TestServer_ServesEmbeddedAssets(t *testing.T) {
 	srv := httptest.NewServer(newTestServer().Handler())
 	defer srv.Close()
-	for _, a := range []string{"/assets/app.css", "/assets/app.js", "/assets/elk.bundled.js"} {
-		resp, err := http.Get(srv.URL + a)
+	resp, _ := http.Get(srv.URL + "/")
+	idx, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	refs := regexp.MustCompile(`/assets/[A-Za-z0-9._-]+`).FindAllString(string(idx), -1)
+	if len(refs) == 0 {
+		t.Fatal("SPA shell references no /assets/ build files")
+	}
+	for _, a := range refs {
+		r, err := http.Get(srv.URL + a)
 		if err != nil {
 			t.Fatalf("get %s: %v", a, err)
 		}
-		resp.Body.Close()
-		if resp.StatusCode != 200 {
-			t.Errorf("%s: code=%d", a, resp.StatusCode)
+		r.Body.Close()
+		if r.StatusCode != 200 {
+			t.Errorf("%s: code=%d", a, r.StatusCode)
 		}
 	}
 }
