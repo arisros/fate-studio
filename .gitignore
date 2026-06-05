@@ -1,0 +1,9 @@
+/dist/
+*.out
+*.test
+cover.out
+coverage.*
+.DS_Store
+.idea/
+.vscode/
+*.swp

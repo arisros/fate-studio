@@ -1,0 +1,4 @@
+# github.com/arisros/fate v0.4.0
+## explicit; go 1.24
+github.com/arisros/fate
+github.com/arisros/fate/internal
