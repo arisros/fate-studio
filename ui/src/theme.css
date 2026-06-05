@@ -135,6 +135,17 @@ button { font-family: var(--ui); }
 .retidy-btn { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .retidy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* global-event badges on nodes */
+.nbadges { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-top: 1px dashed var(--line); }
+.badge-ev { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
+
+/* global-events legend panel */
+.globals-legend { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; max-width: 220px; box-shadow: 0 2px 10px rgba(0,0,0,.18); }
+.gl-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.gl-count { background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; color: var(--fg); }
+.gl-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.gl-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); cursor: pointer; }
+
 /* edges */
 .rf-edge { stroke: var(--edge); stroke-width: 1.75; }
 .rf-edge.active { stroke: var(--edge-active); stroke-width: 2.5; }

@@ -12,7 +12,8 @@ export const PAD = 10;
 
 export interface StateNodeData extends Record<string, unknown> {
   node: GraphNode;
-  rows: GraphEdge[]; // outgoing transitions, shown as rows
+  rows: GraphEdge[]; // outgoing NON-global transitions, shown as rows
+  badges: string[]; // global events emitted by this node (shown as chips)
   isContainer: boolean;
   active: boolean;
   activeLeaf: boolean;
@@ -20,7 +21,39 @@ export interface StateNodeData extends Record<string, unknown> {
 
 export interface EdgeData extends Record<string, unknown> {
   active: boolean;
+  global?: boolean; // a near-global event (badged, hidden as a line by default)
+  event?: string;
   points?: Pt[]; // ELK-routed orthogonal bend points (absolute flow coords)
+}
+
+// detectGlobalEvents finds the high-degree transitions whose lines clutter the
+// chart — and badges them on nodes instead of drawing them. Two patterns:
+//   • convergent (many sources → ≤2 targets): a global sink like TERMINATE.
+//   • divergent  (≤2 sources → many targets): a hub like DETOUR_BACK / reassign.
+// A backbone chain (FORWARD: many → many) is many-to-many and is NOT badged.
+export function detectGlobalEvents(graph: Graph): string[] {
+  const src = new Map<string, Set<string>>();
+  const tgt = new Map<string, Set<string>>();
+  const add = (m: Map<string, Set<string>>, k: string, v: string) => {
+    let s = m.get(k);
+    if (!s) m.set(k, (s = new Set()));
+    s.add(v);
+  };
+  for (const e of graph.edges) {
+    add(src, e.event, e.source);
+    add(tgt, e.event, e.target);
+  }
+  const states = new Set(graph.edges.map((e) => e.source)).size;
+  const T = Math.max(6, Math.ceil(0.4 * states));
+  const out: string[] = [];
+  for (const ev of src.keys()) {
+    const s = src.get(ev)!.size;
+    const t = tgt.get(ev)!.size;
+    const convergent = s >= T && t <= 2;
+    const divergent = t >= T && s <= 2;
+    if (convergent || divergent) out.push(ev);
+  }
+  return out.sort();
 }
 
 function leafHeight(rows: number): number {
@@ -51,6 +84,7 @@ function buildElk(
   graph: Graph,
   kids: Map<string, GraphNode[]>,
   rows: Map<string, GraphEdge[]>,
+  globals: Set<string>,
 ): ElkNode {
   const make = (n: GraphNode): ElkNode => {
     const children = kids.get(n.id) ?? [];
@@ -65,7 +99,7 @@ function buildElk(
         children: children.map(make),
       };
     }
-    const r = (rows.get(n.id) ?? []).length;
+    const r = (rows.get(n.id) ?? []).filter((e) => !globals.has(e.event)).length;
     return { id: n.id, width: NODE_W, height: leafHeight(r) };
   };
   return {
@@ -85,11 +119,15 @@ function buildElk(
       "elk.padding": "[top=24,left=24,bottom=24,right=24]",
     },
     children: (kids.get("") ?? []).map(make),
-    edges: graph.edges.map((e) => ({
-      id: e.id,
-      sources: [e.source],
-      targets: [e.target],
-    })),
+    // Exclude global events from layout so ELK packs nodes tightly (their
+    // many-to-one fan would otherwise blow the layout apart).
+    edges: graph.edges
+      .filter((e) => !globals.has(e.event))
+      .map((e) => ({
+        id: e.id,
+        sources: [e.source],
+        targets: [e.target],
+      })),
   };
 }
 
@@ -109,9 +147,10 @@ export interface Pt {
 export interface Layout {
   pos: Map<string, Positioned>;
   edgePts: Map<string, Pt[]>; // routed bend points, absolute flow coords
+  globals: Set<string>; // near-global events (badged, not laid out)
 }
 
-function flatten(root: ElkNode): Layout {
+function flatten(root: ElkNode): { pos: Map<string, Positioned>; edgePts: Map<string, Pt[]> } {
   const pos = new Map<string, Positioned>();
   const edgePts = new Map<string, Pt[]>();
   // baseX/baseY = absolute origin of n's container; n.x/n.y are relative to it.
@@ -148,12 +187,15 @@ export interface FlowResult {
   edges: Edge<EdgeData>[];
 }
 
-// layoutGraph runs ELK and returns node positions + routed edge points.
+// layoutGraph runs ELK and returns node positions + routed edge points. Global
+// events are excluded from layout (they're badged, not drawn by default).
 export async function layoutGraph(graph: Graph): Promise<Layout> {
   const kids = childrenOf(graph);
   const rows = rowsBySource(graph);
-  const res = await elk.layout(buildElk(graph, kids, rows));
-  return flatten(res);
+  const globals = new Set(detectGlobalEvents(graph));
+  const res = await elk.layout(buildElk(graph, kids, rows, globals));
+  const { pos, edgePts } = flatten(res);
+  return { pos, edgePts, globals };
 }
 
 export function toFlow(
@@ -168,9 +210,12 @@ export function toFlow(
   // Parent nodes must precede children in the array for React Flow.
   const ordered = [...graph.nodes].sort((a, b) => depth(a) - depth(b));
 
+  const gset = layout.globals;
+
   const nodes: Node<StateNodeData>[] = ordered.map((n) => {
     const p = pos.get(n.id) ?? { x: 0, y: 0, width: NODE_W, height: leafHeight(0), parentId: n.parent };
     const isContainer = (kids.get(n.id) ?? []).length > 0;
+    const all = rows.get(n.id) ?? [];
     return {
       id: n.id,
       type: nodeKind(n, isContainer),
@@ -180,7 +225,8 @@ export function toFlow(
       style: { width: p.width, height: p.height },
       data: {
         node: n,
-        rows: rows.get(n.id) ?? [],
+        rows: all.filter((e) => !gset.has(e.event)),
+        badges: [...new Set(all.filter((e) => gset.has(e.event)).map((e) => e.event))].sort(),
         isContainer,
         active: active.paths.has(n.path),
         activeLeaf: active.leaves.has(n.path),
@@ -192,6 +238,7 @@ export function toFlow(
 
   const edges: Edge<EdgeData>[] = graph.edges.map((e) => {
     const sourceActive = active.leaves.has(nodePath(graph, e.source));
+    const isGlobal = gset.has(e.event);
     return {
       id: e.id,
       source: e.source,
@@ -199,7 +246,15 @@ export function toFlow(
       type: "transition",
       label: edgeLabel(e),
       markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-      data: { active: sourceActive, points: layout.edgePts.get(e.id) },
+      // Global edges are hidden by default (badged on the node instead) and get
+      // no ELK route — they render as a plain bezier if the user toggles them on.
+      hidden: isGlobal,
+      data: {
+        active: sourceActive,
+        global: isGlobal,
+        event: e.event,
+        points: isGlobal ? undefined : layout.edgePts.get(e.id),
+      },
       animated: sourceActive,
       className: sourceActive ? "edge-active" : undefined,
       zIndex: 10,

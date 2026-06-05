@@ -43,6 +43,10 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
   // version bumps force a fresh ELK layout (the "re-tidy" button clears the
   // saved drag positions and re-runs auto-layout).
   const [version, setVersion] = useState(0);
+  // Near-global events (e.g. TERMINATE) are badged on nodes, not drawn, unless
+  // the user toggles them on.
+  const [globals, setGlobals] = useState<string[]>([]);
+  const [showGlobals, setShowGlobals] = useState(false);
   const active = useMemo(() => activeFromPath(activePath), [activePath]);
 
   useEffect(() => {
@@ -57,7 +61,8 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       if (cancelled) return;
       const { nodes: ns, edges: es } = toFlow(graph, layout, activeFromPath(activePath));
       setNodes(ns);
-      setEdges(es);
+      setEdges(es.map((e) => (e.data?.global ? { ...e, hidden: !showGlobals } : e)));
+      setGlobals([...layout.globals]);
     })();
     return () => {
       cancelled = true;
@@ -129,6 +134,14 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
     setVersion((v) => v + 1);
   };
 
+  const toggleGlobals = () => {
+    const next = !showGlobals;
+    setShowGlobals(next);
+    setEdges((es: Edge<EdgeData>[]) =>
+      es.map((e: Edge<EdgeData>) => (e.data?.global ? { ...e, hidden: !next } : e)),
+    );
+  };
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -147,6 +160,26 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
           ↺ re-tidy
         </button>
       </Panel>
+      {globals.length > 0 && (
+        <Panel position="top-right">
+          <div className="globals-legend">
+            <div className="gl-title">
+              global events <span className="gl-count">{globals.length}</span>
+            </div>
+            <div className="gl-chips">
+              {globals.map((ev) => (
+                <span key={ev} className="badge-ev">
+                  ⊗ {ev}
+                </span>
+              ))}
+            </div>
+            <label className="gl-toggle">
+              <input type="checkbox" checked={showGlobals} onChange={toggleGlobals} />
+              draw as edges
+            </label>
+          </div>
+        </Panel>
+      )}
       <Background variant={BackgroundVariant.Cross} gap={26} size={3} className="mesh-bg" />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable />
