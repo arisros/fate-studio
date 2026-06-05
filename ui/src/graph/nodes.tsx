@@ -18,6 +18,19 @@ function Header({ data }: { data: StateNodeData }) {
   );
 }
 
+function Badges({ data }: { data: StateNodeData }) {
+  if (!data.badges.length) return null;
+  return (
+    <div className="nbadges">
+      {data.badges.map((ev) => (
+        <span key={ev} className="badge-ev" title={`global transition: ${ev}`}>
+          ⊗ {ev}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function Rows({ data }: { data: StateNodeData }) {
   const { sendable, interactive, onSend } = useStudio();
   if (!data.rows.length) return null;
@@ -51,6 +64,7 @@ export function StateNode({ data }: P) {
       <Handle type="target" position={Position.Top} />
       <Header data={data} />
       <Rows data={data} />
+      <Badges data={data} />
       <Handle type="source" position={Position.Bottom} />
     </div>
   );
@@ -62,6 +76,7 @@ export function CompoundNode({ data }: P) {
       <Handle type="target" position={Position.Top} />
       <Header data={data} />
       <Rows data={data} />
+      <Badges data={data} />
       <Handle type="source" position={Position.Bottom} />
     </div>
   );
