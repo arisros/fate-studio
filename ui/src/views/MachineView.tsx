@@ -20,7 +20,6 @@ export function MachineView() {
   return (
     <div className="machine-view">
       <div className="subbar">
-        <Link to="/" className="back">← index</Link>
         <span className="mtitle">{name}</span>
         <Link to={`/sim/${encodeURIComponent(name)}`} className="btn primary">▶ simulate</Link>
         <a href={`/m/${encodeURIComponent(name)}/describe`} className="btn ghost" target="_blank" rel="noreferrer">
