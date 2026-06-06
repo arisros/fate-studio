@@ -1,0 +1,25 @@
+# Deployment image for fate-studio-dp: the snapshot studio baked with the LORA
+# (LTW) production machine descriptors.
+#
+# Built from the fate-studio module (cmd/fate-studio = the snapshot viewer) plus
+# a staged dp-snapshots/ directory holding the .fate/*.json emitted by LTW's
+# cmd/fsm-snapshot. The studio renders these as static charts — the real
+# survey / underwriting / bpkb-review / esign machines, generated from source.
+#
+#   # from services/lora-partnership-task-ndf: go run ./cmd/fsm-snapshot -out ./.fate
+#   # from services/fate-studio: cp -r ../lora-partnership-task-ndf/.fate dp-snapshots
+#   docker build -f Dockerfile.dp -t fsm-studio:latest .
+#
+# The engine is vendored, so the build is hermetic. Read-only-root-fs safe: the
+# snapshots are baked in and never written at runtime.
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 GOFLAGS=-mod=vendor go build -trimpath -ldflags="-s -w" -o /out/fate-studio ./cmd/fate-studio
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/fate-studio /fate-studio
+COPY dp-snapshots /snapshots
+ENV FATE_STUDIO_ADDR=:8090
+EXPOSE 8090
+ENTRYPOINT ["/fate-studio", "--snapshots", "/snapshots"]

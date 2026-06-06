@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	sc "github.com/arisros/fate"
@@ -25,11 +26,19 @@ type Entry struct {
 // Vite and committed to assets/). The server is a JSON/SSE API + SPA host:
 // machine structure comes from /m/{name}/graph, live state over /sim/{name}/*.
 type Server struct {
-	title   string
+	title string
+
+	// entries is guarded by mu: Register and the snapshot hot-reloader mutate it
+	// while request handlers read it concurrently.
+	mu      sync.RWMutex
 	entries []Entry
 
 	// live sessions keyed by machine name (one shared session per machine).
 	sessions *sessionStore
+
+	// events broadcasts server-global SSE messages (e.g. graph-changed on
+	// snapshot hot-reload) to the browser.
+	events *eventHub
 }
 
 // NewServer returns an empty studio. title appears in the page header.
@@ -37,17 +46,36 @@ func NewServer(title string) *Server {
 	if title == "" {
 		title = "fate studio"
 	}
-	return &Server{title: title, sessions: newSessionStore()}
+	return &Server{title: title, sessions: newSessionStore(), events: newEventHub()}
 }
 
 // Register adds a machine. build is required (static view); buildLive is
 // optional (interactive simulator). Returns the server for chaining.
 func (s *Server) Register(e Entry) *Server {
+	s.mu.Lock()
 	s.entries = append(s.entries, e)
+	s.mu.Unlock()
 	return s
 }
 
+// replaceEntry inserts e, replacing any existing entry with the same name (used
+// by the snapshot hot-reloader). Returns true if an existing entry was updated.
+func (s *Server) replaceEntry(e Entry) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.entries {
+		if s.entries[i].Name == e.Name {
+			s.entries[i] = e
+			return true
+		}
+	}
+	s.entries = append(s.entries, e)
+	return false
+}
+
 func (s *Server) lookup(name string) (Entry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, e := range s.entries {
 		if e.Name == name {
 			return e, true
@@ -56,10 +84,21 @@ func (s *Server) lookup(name string) (Entry, bool) {
 	return Entry{}, false
 }
 
+// entryList returns a snapshot copy of the registered entries under the read
+// lock — safe to range over without holding the lock.
+func (s *Server) entryList() []Entry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Entry, len(s.entries))
+	copy(out, s.entries)
+	return out
+}
+
 // Handler returns an http.Handler with all studio routes mounted.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/machines", s.handleAPIMachines)
+	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/m/", s.handleMachine)
 	mux.HandleFunc("/sim/", s.handleSimRoute)
 	mux.HandleFunc("/assets/", s.handleAssets)

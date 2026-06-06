@@ -44,4 +44,13 @@ export const api = {
   },
 
   exportURL: (name: string) => `/sim/${encodeURIComponent(name)}/export`,
+
+  // onGraphChanged opens the server-global /events SSE stream and invokes cb
+  // with the affected machine name whenever a watched snapshot is hot-reloaded.
+  // Returns an unsubscribe function. Used by the snapshot viewer for live reload.
+  onGraphChanged(cb: (name: string) => void): () => void {
+    const es = new EventSource("/events", { withCredentials: true });
+    es.addEventListener("graph-changed", (e) => cb((e as MessageEvent).data as string));
+    return () => es.close();
+  },
 };
