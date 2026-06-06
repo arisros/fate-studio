@@ -24,6 +24,7 @@ export interface EdgeData extends Record<string, unknown> {
   global?: boolean; // a near-global event (badged, hidden as a line by default)
   event?: string;
   points?: Pt[]; // ELK-routed orthogonal bend points (absolute flow coords)
+  selfLoop?: boolean; // source === target (internal/cyclic transition)
 }
 
 // detectGlobalEvents finds the high-degree transitions whose lines clutter the
@@ -111,10 +112,10 @@ function buildElk(
       // Orthogonal routing with bend points → clean, non-overlapping wires that
       // the custom edge follows (instead of React Flow's straight beziers).
       "elk.edgeRouting": "ORTHOGONAL",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "70",
-      "elk.spacing.nodeNode": "46",
-      "elk.layered.spacing.edgeNodeBetweenLayers": "26",
-      "elk.layered.spacing.edgeEdgeBetweenLayers": "16",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "90",
+      "elk.spacing.nodeNode": "50",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "45",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "20",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
       "elk.padding": "[top=24,left=24,bottom=24,right=24]",
     },
@@ -254,6 +255,7 @@ export function toFlow(
         global: isGlobal,
         event: e.event,
         points: isGlobal ? undefined : layout.edgePts.get(e.id),
+        selfLoop: e.source === e.target,
       },
       animated: sourceActive,
       className: sourceActive ? "edge-active" : undefined,

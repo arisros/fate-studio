@@ -54,10 +54,15 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
     (async () => {
       const layout = await layoutGraph(graph);
       const overrides = loadOverrides(machine);
+      let hasOverrides = false;
       for (const [id, o] of Object.entries(overrides)) {
         const p = layout.pos.get(id);
-        if (p) layout.pos.set(id, { ...p, x: o.x, y: o.y });
+        if (p) { layout.pos.set(id, { ...p, x: o.x, y: o.y }); hasOverrides = true; }
       }
+      // ELK routes were computed for the original positions; if nodes were moved,
+      // the routes point to wrong coordinates. Clear them so edges fall back to
+      // Bezier, which at least connects to the actual node handles.
+      if (hasOverrides) layout.edgePts.clear();
       if (cancelled) return;
       const { nodes: ns, edges: es } = toFlow(graph, layout, activeFromPath(activePath));
       setNodes(ns);

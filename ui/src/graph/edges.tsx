@@ -36,8 +36,19 @@ function norm(x: number, y: number): Pt {
 function dist(a: Pt, b: Pt): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
-function mid(pts: Pt[]): Pt {
-  return pts[Math.floor(pts.length / 2)] ?? pts[0];
+// Place the label at the midpoint of the longest straight segment so it lands
+// on a clear run of wire rather than at a bend that may be flush with a node.
+function longestSegmentMid(pts: Pt[]): Pt {
+  let best = pts[0];
+  let maxLen = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = dist(pts[i], pts[i + 1]);
+    if (d > maxLen) {
+      maxLen = d;
+      best = { x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2 };
+    }
+  }
+  return best;
 }
 
 export function TransitionEdge(props: EdgeProps<Edge<EdgeData>>) {
@@ -48,10 +59,17 @@ export function TransitionEdge(props: EdgeProps<Edge<EdgeData>>) {
   let labelX: number;
   let labelY: number;
 
-  if (pts && pts.length >= 2) {
+  if (data?.selfLoop) {
+    // Self-loop: render a cubic Bezier that bulges clearly to the right of the
+    // node so the loop is readable and doesn't overlap the node body.
+    const bulge = 70;
+    edgePath = `M ${sourceX} ${sourceY} C ${sourceX + bulge} ${sourceY + 40} ${targetX + bulge} ${targetY - 40} ${targetX} ${targetY}`;
+    labelX = sourceX + bulge + 8;
+    labelY = (sourceY + targetY) / 2;
+  } else if (pts && pts.length >= 2) {
     // Follow ELK's routed wire.
     edgePath = roundedPath(pts);
-    const m = mid(pts);
+    const m = longestSegmentMid(pts);
     labelX = m.x;
     labelY = m.y;
   } else {
