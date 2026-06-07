@@ -13,7 +13,9 @@ function Header({ data }: { data: StateNodeData }) {
       {node.type !== "atomic" && node.type !== "compound" && (
         <span className={`ntype t-${node.type}`}>{node.type}</span>
       )}
-      {!!node.entry?.length && <span className="nact" title="entry">⏎{node.entry.join(",")}</span>}
+      {!data.compact && !!node.entry?.length && (
+        <span className="nact" title="entry">⏎{node.entry.join(",")}</span>
+      )}
     </div>
   );
 }
@@ -61,23 +63,48 @@ function Rows({ data }: { data: StateNodeData }) {
 export function StateNode({ data }: P) {
   return (
     <div className={`node state${data.active ? " active" : ""}${data.activeLeaf ? " leaf" : ""}`}>
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Left} />
       <Header data={data} />
-      <Rows data={data} />
-      <Badges data={data} />
-      <Handle type="source" position={Position.Bottom} />
+      {!data.compact && <Rows data={data} />}
+      {!data.compact && <Badges data={data} />}
+      <Handle type="source" position={Position.Right} />
     </div>
   );
 }
 
 export function CompoundNode({ data }: P) {
+  // Lane: direct child of a parallel — render as a labelled swimlane region.
+  if (data.isLane) {
+    return (
+      <div className={`node compound lane${data.active ? " active" : ""}`}>
+        <Handle type="target" position={Position.Left} />
+        <div className="region-label">{data.node.label}</div>
+        {!data.compact && <Rows data={data} />}
+        {!data.compact && <Badges data={data} />}
+        <Handle type="source" position={Position.Right} />
+      </div>
+    );
+  }
+  // Ghost: structural grouping with no own transitions — minimal visual weight.
+  if (!data.hasOwnTransitions) {
+    return (
+      <div className={`node compound ghost${data.active ? " active" : ""}`}>
+        <Handle type="target" position={Position.Left} />
+        <span className="ghost-label">{data.node.label}</span>
+        {!data.compact && <Rows data={data} />}
+        {!data.compact && <Badges data={data} />}
+        <Handle type="source" position={Position.Right} />
+      </div>
+    );
+  }
+  // Semantic compound: has own transitions → prominent header box.
   return (
     <div className={`node compound${data.active ? " active" : ""}`}>
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Left} />
       <Header data={data} />
-      <Rows data={data} />
-      <Badges data={data} />
-      <Handle type="source" position={Position.Bottom} />
+      {!data.compact && <Rows data={data} />}
+      {!data.compact && <Badges data={data} />}
+      <Handle type="source" position={Position.Right} />
     </div>
   );
 }
@@ -85,9 +112,12 @@ export function CompoundNode({ data }: P) {
 export function ParallelNode({ data }: P) {
   return (
     <div className={`node parallel${data.active ? " active" : ""}`}>
-      <Handle type="target" position={Position.Top} />
-      <Header data={data} />
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="target" position={Position.Left} />
+      <div className="swimlane-label">
+        <span className="swimlane-icon">⊞</span>
+        {data.node.label}
+      </div>
+      <Handle type="source" position={Position.Right} />
     </div>
   );
 }
@@ -95,7 +125,7 @@ export function ParallelNode({ data }: P) {
 export function FinalNode({ data }: P) {
   return (
     <div className={`node final${data.active ? " active" : ""}`} title={data.node.label}>
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Left} />
       <span className="final-ring" />
       <span className="final-label">{data.node.label}</span>
     </div>
@@ -105,9 +135,9 @@ export function FinalNode({ data }: P) {
 export function HistoryNode({ data }: P) {
   return (
     <div className={`node history${data.active ? " active" : ""}`} title={`history (${data.node.history ?? "shallow"})`}>
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Left} />
       <span className="hist">{data.node.history === "deep" ? "H*" : "H"}</span>
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

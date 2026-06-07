@@ -40,6 +40,8 @@ func (s *Server) handleAssets(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/javascript; charset=utf-8")
 	case strings.HasSuffix(name, ".css"):
 		w.Header().Set("content-type", "text/css; charset=utf-8")
+	case strings.HasSuffix(name, ".wasm"):
+		w.Header().Set("content-type", "application/wasm")
 	}
 	w.Header().Set("cache-control", "public, max-age=31536000, immutable")
 

@@ -60,12 +60,20 @@ export function TransitionEdge(props: EdgeProps<Edge<EdgeData>>) {
   let labelY: number;
 
   if (data?.selfLoop) {
-    // Self-loop: render a cubic Bezier that bulges clearly to the right of the
-    // node so the loop is readable and doesn't overlap the node body.
-    const bulge = 70;
-    edgePath = `M ${sourceX} ${sourceY} C ${sourceX + bulge} ${sourceY + 40} ${targetX + bulge} ${targetY - 40} ${targetX} ${targetY}`;
-    labelX = sourceX + bulge + 8;
-    labelY = (sourceY + targetY) / 2;
+    // Self-loop: compact cubic-bezier oval on the RIGHT side of the node.
+    // sourceX = right-edge center. We route entirely to the right so the
+    // arrowhead lands back on the right face pointing inward — clean and unambiguous.
+    const loopW = 44;
+    const loopH = 32;
+    edgePath = [
+      `M ${sourceX} ${sourceY - loopH / 2}`,
+      `C ${sourceX + loopW} ${sourceY - loopH / 2}`,
+      `  ${sourceX + loopW} ${sourceY + loopH / 2}`,
+      `  ${sourceX} ${sourceY + loopH / 2}`,
+    ].join(" ");
+    // Label above the oval so it doesn't conflict with nearby transition edges.
+    labelX = sourceX + loopW / 2;
+    labelY = sourceY - loopH / 2 - 14;
   } else if (pts && pts.length >= 2) {
     // Follow ELK's routed wire.
     edgePath = roundedPath(pts);

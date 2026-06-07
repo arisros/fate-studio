@@ -6,8 +6,8 @@ import type { Graph, GraphEdge, GraphNode } from "../types";
 const elk = new ELK();
 
 export const NODE_W = 230;
-export const ROW_H = 24;
-export const HEADER_H = 36;
+export const ROW_H = 26;
+export const HEADER_H = 40;
 export const PAD = 10;
 
 export interface StateNodeData extends Record<string, unknown> {
@@ -17,6 +17,9 @@ export interface StateNodeData extends Record<string, unknown> {
   isContainer: boolean;
   active: boolean;
   activeLeaf: boolean;
+  compact: boolean; // show-mode: label-only (true) vs fields/actions (false)
+  hasOwnTransitions: boolean; // false = structural wrapper (ghost/lane rendering)
+  isLane: boolean; // true = direct child of a parallel state (swimlane region)
 }
 
 export interface EdgeData extends Record<string, unknown> {
@@ -86,38 +89,67 @@ function buildElk(
   kids: Map<string, GraphNode[]>,
   rows: Map<string, GraphEdge[]>,
   globals: Set<string>,
+  compact: boolean,
 ): ElkNode {
+  // Nodes that appear as edge sources have own transitions → semantic containers.
+  // Containers with no edge sources are structural groupings → ghost/lane rendering.
+  const edgeSources = new Set(graph.edges.filter((e) => !globals.has(e.event)).map((e) => e.source));
+  const nodeTypeById = new Map<string, string>(graph.nodes.map((n) => [n.id, n.type as string]));
+
   const make = (n: GraphNode): ElkNode => {
     const children = kids.get(n.id) ?? [];
     const isContainer = children.length > 0;
     if (isContainer) {
+      const isParallel = n.type === "parallel";
+      const parentType = n.parent ? nodeTypeById.get(n.parent) : undefined;
+      const isLane = parentType === "parallel"; // direct child of a parallel = swimlane region
+      const isStructural = !edgeSources.has(n.id); // no own transitions = ghost/lane container
+
+      // Parallel swimlane containers and structural ghost wrappers omit the 36px
+      // header, so they need much less top-padding than semantic compound nodes.
+      let padding: string;
+      let nodeSpacing: string;
+      if (isParallel) {
+        padding = "[top=36,left=24,bottom=24,right=24]";
+        nodeSpacing = "20";
+      } else if (isLane || isStructural) {
+        padding = "[top=28,left=18,bottom=18,right=18]";
+        nodeSpacing = "36";
+      } else {
+        padding = "[top=48,left=22,bottom=22,right=22]"; // 40px header + 8px gap
+        nodeSpacing = "40";
+      }
+
       return {
         id: n.id,
         layoutOptions: {
-          "elk.padding": "[top=42,left=14,bottom=14,right=14]",
-          "elk.spacing.nodeNode": "28",
+          "elk.padding": padding,
+          "elk.spacing.nodeNode": nodeSpacing,
         },
         children: children.map(make),
       };
     }
-    const r = (rows.get(n.id) ?? []).filter((e) => !globals.has(e.event)).length;
+    // Compact (label-only) mode shrinks leaves to just their header so the
+    // chart reads as a pure state-flow; fields mode sizes for the action rows.
+    const r = compact ? 0 : (rows.get(n.id) ?? []).filter((e) => !globals.has(e.event)).length;
     return { id: n.id, width: NODE_W, height: leafHeight(r) };
   };
   return {
     id: "root",
     layoutOptions: {
       "elk.algorithm": "layered",
-      "elk.direction": "DOWN",
+      // Horizontal (left-to-right) flow, like an ERD — reads as a pipeline.
+      "elk.direction": "RIGHT",
       "elk.hierarchyHandling": "INCLUDE_CHILDREN",
       // Orthogonal routing with bend points → clean, non-overlapping wires that
       // the custom edge follows (instead of React Flow's straight beziers).
       "elk.edgeRouting": "ORTHOGONAL",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "90",
-      "elk.spacing.nodeNode": "50",
-      "elk.layered.spacing.edgeNodeBetweenLayers": "45",
-      "elk.layered.spacing.edgeEdgeBetweenLayers": "20",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "120",
+      "elk.spacing.nodeNode": "70",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "55",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "28",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-      "elk.padding": "[top=24,left=24,bottom=24,right=24]",
+      "elk.padding": "[top=32,left=32,bottom=32,right=32]",
     },
     children: (kids.get("") ?? []).map(make),
     // Exclude global events from layout so ELK packs nodes tightly (their
@@ -190,11 +222,12 @@ export interface FlowResult {
 
 // layoutGraph runs ELK and returns node positions + routed edge points. Global
 // events are excluded from layout (they're badged, not drawn by default).
-export async function layoutGraph(graph: Graph): Promise<Layout> {
+// compact (label-only show-mode) sizes leaves to their header.
+export async function layoutGraph(graph: Graph, compact = false): Promise<Layout> {
   const kids = childrenOf(graph);
   const rows = rowsBySource(graph);
   const globals = new Set(detectGlobalEvents(graph));
-  const res = await elk.layout(buildElk(graph, kids, rows, globals));
+  const res = await elk.layout(buildElk(graph, kids, rows, globals, compact));
   const { pos, edgePts } = flatten(res);
   return { pos, edgePts, globals };
 }
@@ -203,6 +236,7 @@ export function toFlow(
   graph: Graph,
   layout: Layout,
   active: { paths: Set<string>; leaves: Set<string> },
+  compact = false,
 ): FlowResult {
   const pos = layout.pos;
   const kids = childrenOf(graph);
@@ -212,6 +246,8 @@ export function toFlow(
   const ordered = [...graph.nodes].sort((a, b) => depth(a) - depth(b));
 
   const gset = layout.globals;
+  const edgeSources = new Set(graph.edges.map((e) => e.source));
+  const parallelIds = new Set(graph.nodes.filter((n) => n.type === "parallel").map((n) => n.id));
 
   const nodes: Node<StateNodeData>[] = ordered.map((n) => {
     const p = pos.get(n.id) ?? { x: 0, y: 0, width: NODE_W, height: leafHeight(0), parentId: n.parent };
@@ -231,6 +267,9 @@ export function toFlow(
         isContainer,
         active: active.paths.has(n.path),
         activeLeaf: active.leaves.has(n.path),
+        compact,
+        hasOwnTransitions: edgeSources.has(n.id),
+        isLane: n.parent ? parallelIds.has(n.parent) : false,
       },
       draggable: true,
       selectable: true,
@@ -246,7 +285,7 @@ export function toFlow(
       target: e.target,
       type: "transition",
       label: edgeLabel(e),
-      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
       // Global edges are hidden by default (badged on the node instead) and get
       // no ELK route — they render as a plain bezier if the user toggles them on.
       hidden: isGlobal,

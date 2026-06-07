@@ -116,11 +116,24 @@ button { font-family: var(--ui); }
 
 /* nodes */
 .node { width: 100%; height: 100%; background: var(--panel); border: 1.5px solid var(--line); border-radius: var(--radius); overflow: hidden; font-size: 12px; transition: border-color .15s, box-shadow .15s; }
-.node.compound, .node.parallel { background: var(--panel-2); }
-.node.parallel { border-style: dashed; }
+.node.compound { background: var(--panel-2); }
 .node.active { border-color: var(--active); box-shadow: 0 0 0 2px var(--active-bg); }
 .node.active.leaf { background: var(--active-bg); }
-.nhead { display: flex; align-items: center; gap: 6px; padding: 8px 10px; height: 36px; border-bottom: 1px solid var(--line); font-weight: 600; }
+
+/* Parallel: swimlane outer container (dashed accent border, transparent bg) */
+.node.parallel { background: transparent; border: 2px dashed var(--accent); border-radius: 14px; box-shadow: none; overflow: visible; }
+.swimlane-label { position: absolute; top: 6px; left: 10px; display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.09em; pointer-events: none; white-space: nowrap; }
+.swimlane-icon { font-size: 12px; line-height: 1; }
+
+/* Lane: compound direct child of a parallel — one horizontal swimlane region */
+.node.compound.lane { background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; box-shadow: none; overflow: visible; }
+:root[data-theme="light"] .node.compound.lane { background: rgba(0,0,0,0.025); border-color: rgba(0,0,0,0.08); }
+.region-label { position: absolute; top: 5px; left: 10px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; pointer-events: none; white-space: nowrap; }
+
+/* Ghost compound: structural grouping with no own transitions */
+.node.compound.ghost { background: transparent; border: 1px dashed var(--line); box-shadow: none; overflow: visible; }
+.ghost-label { position: absolute; top: 5px; left: 10px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none; white-space: nowrap; }
+.nhead { display: flex; align-items: center; gap: 6px; padding: 8px 10px; height: 40px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 13px; }
 .compound > .nhead, .parallel > .nhead { border-bottom: none; }
 .nlabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dot-initial { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
@@ -135,11 +148,31 @@ button { font-family: var(--ui); }
 .node.final { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 4px; background: transparent; border: none; }
 .final-ring { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--fg); box-shadow: inset 0 0 0 3px var(--bg), inset 0 0 0 5px var(--fg); }
 .final-label { font-size: 11px; color: var(--muted); }
-.node.history { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--panel-2); font-weight: 700; }
-.node.history .hist { color: var(--accent); }
+.node.history { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--panel-2); font-weight: 700; font-size: 14px; }
+.node.history .hist { color: var(--accent); font-size: 15px; font-weight: 800; }
 
-/* mesh-wired canvas */
-.react-flow__background.mesh-bg { color: var(--line); opacity: .55; }
+/* ERD-style cards: soft depth on leaf/semantic nodes; tinted header on state cards */
+.node.state, .node.compound:not(.lane):not(.ghost) { box-shadow: 0 1px 3px rgba(0,0,0,.16); }
+.node.state > .nhead { background: var(--panel-2); }
+.react-flow__handle { opacity: 0 !important; width: 1px !important; height: 1px !important; min-width: 1px !important; min-height: 1px !important; border: none !important; background: transparent !important; pointer-events: none !important; }
+
+/* hover focus: connected sub-flow stays lit, the rest dims (ERD-style) */
+.react-flow__node, .react-flow__edge { transition: opacity .15s ease; }
+.react-flow__node.dim { opacity: .20; }
+.react-flow__edge.dim { opacity: .12; }
+.react-flow__node.hl .node { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 3px 14px rgba(0,0,0,.28); }
+.react-flow__edge.hl .rf-edge { stroke: var(--edge-active); stroke-width: 2.5; }
+.react-flow__edge.hl .edge-label { color: var(--accent); border-color: var(--accent); }
+
+/* canvas background */
+.react-flow__background.mesh-bg { color: var(--line); opacity: .40; }
+
+/* canvas toolbar: show-mode segmented control + re-tidy */
+.chart-toolbar { display: flex; align-items: center; gap: 8px; }
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.seg-btn { border: none; background: none; color: var(--muted); padding: 5px 11px; font-size: 12px; cursor: pointer; }
+.seg-btn:hover { color: var(--fg); }
+.seg-btn.on { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .retidy-btn { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .retidy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -155,11 +188,11 @@ button { font-family: var(--ui); }
 .gl-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); cursor: pointer; }
 
 /* edges */
-.rf-edge { stroke: var(--edge); stroke-width: 1.75; }
-.rf-edge.active { stroke: var(--edge-active); stroke-width: 2.5; }
+.rf-edge { stroke: var(--edge); stroke-width: 2; }
+.rf-edge.active { stroke: var(--edge-active); stroke-width: 2.75; }
 .react-flow__edge.animated .react-flow__edge-path { stroke-dasharray: 6; animation: dashflow .6s linear infinite; }
 @keyframes dashflow { to { stroke-dashoffset: -12; } }
-.edge-label { background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-family: var(--mono); font-size: 10px; color: var(--muted); pointer-events: none; }
+.edge-label { background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-family: var(--mono); font-size: 10px; color: var(--muted); pointer-events: none; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .edge-label.active { color: var(--accent); border-color: var(--accent); }
 .react-flow__edge-path { stroke: var(--edge); }
 
