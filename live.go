@@ -70,6 +70,7 @@ type LiveSnapshot struct {
 	Context     json.RawMessage `json:"context"`
 	Status      sc.ActorStatus  `json:"status"`
 	ASCII       string          `json:"ascii"` // ASCII diagram (CLI / static view)
+	UIState     json.RawMessage `json:"uiState,omitempty"` // per-state payload from StateNodeConfig.UIState
 	Timers      []TimerInfo     `json:"timers,omitempty"`
 	Invocations []InvokeInfo    `json:"invocations,omitempty"`
 }
@@ -133,11 +134,13 @@ func (e *liveActor[Ctx, Evt]) Snapshot() LiveSnapshot {
 	d := e.describe()
 	activePath := snap.Value.Path()
 	hl := highlightForActivePath(activePath)
+	ctx := snap.Context
 	return LiveSnapshot{
 		Path:        activePath,
 		Context:     ctxBytes,
 		Status:      snap.Status,
 		ASCII:       sc.RenderASCII(d, sc.RenderOptions{Highlight: hl}),
+		UIState:     e.machine.ComputeUIState(activePath, &ctx),
 		Timers:      e.PendingTimers(),
 		Invocations: e.PendingInvocations(),
 	}

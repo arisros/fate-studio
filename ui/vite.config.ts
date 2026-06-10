@@ -41,6 +41,13 @@ export default defineConfig({
         entryFileNames: "app-[hash].js",
         chunkFileNames: "chunk-[hash].js",
         assetFileNames: "[name]-[hash][extname]",
+        // Split the heavy graph engines into their own chunks so they load with
+        // the (lazy) chart, not in the initial app shell.
+        manualChunks(id) {
+          if (id.includes("node_modules/elkjs")) return "elk";
+          if (id.includes("node_modules/libavoid-js")) return "libavoid";
+          if (id.includes("node_modules/@xyflow")) return "xyflow";
+        },
       },
     },
   },

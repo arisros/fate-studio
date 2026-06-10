@@ -97,13 +97,17 @@ func (v StateValue) Path() string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
+	var parts []string
 	for _, k := range keys {
 		child := v.Children[k].Path()
 		if child == "" {
 			parts = append(parts, k)
 		} else {
-			parts = append(parts, k+"."+child)
+			// child may be " | "-separated when it wraps a parallel subtree;
+			// each segment needs the k prefix so the full path is unambiguous.
+			for _, seg := range strings.Split(child, " | ") {
+				parts = append(parts, k+"."+seg)
+			}
 		}
 	}
 	return strings.Join(parts, " | ")

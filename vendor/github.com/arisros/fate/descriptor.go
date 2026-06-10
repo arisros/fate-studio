@@ -70,15 +70,16 @@ type MachineDescriptor struct {
 // StateNodeConfig but with strings where the original held function values
 // or generic actions.
 type StateNodeDescriptor struct {
-	Type    string                            `json:"type"` // "atomic" | "compound" | "parallel" | "final" | "history"
-	Initial string                            `json:"initial,omitempty"`
-	Default string                            `json:"default,omitempty"` // history default target
-	History string                            `json:"history,omitempty"` // "shallow" | "deep" (only for history nodes)
-	Entry   []string                          `json:"entry,omitempty"`   // action names
-	Exit    []string                          `json:"exit,omitempty"`    // action names
-	On      map[string][]TransitionDescriptor `json:"on,omitempty"`
-	OnDone  []TransitionDescriptor            `json:"on_done,omitempty"`
-	States  map[string]StateNodeDescriptor    `json:"states,omitempty"`
+	Type          string                            `json:"type"` // "atomic" | "compound" | "parallel" | "final" | "history"
+	Initial       string                            `json:"initial,omitempty"`
+	Default       string                            `json:"default,omitempty"` // history default target
+	History       string                            `json:"history,omitempty"` // "shallow" | "deep" (only for history nodes)
+	Entry         []string                          `json:"entry,omitempty"`   // action names
+	Exit          []string                          `json:"exit,omitempty"`    // action names
+	On            map[string][]TransitionDescriptor `json:"on,omitempty"`
+	OnDone        []TransitionDescriptor            `json:"on_done,omitempty"`
+	States        map[string]StateNodeDescriptor    `json:"states,omitempty"`
+	UIStateSchema json.RawMessage                   `json:"uiStateSchema,omitempty"` // JSON Schema for UIState return type
 }
 
 // TransitionDescriptor is the descriptor for a single transition entry.
@@ -88,6 +89,7 @@ type TransitionDescriptor struct {
 	Internal bool     `json:"internal,omitempty"`
 	Guard    string   `json:"guard,omitempty"`
 	Actions  []string `json:"actions,omitempty"`
+	CondMeta *CondMeta `json:"condMeta,omitempty"` // gate metadata for the studio inspector
 }
 
 // Describe returns a MachineDescriptor for the machine. The context is
@@ -153,6 +155,9 @@ func describeNode[Ctx any, Evt any](n *stateNode[Ctx, Evt]) StateNodeDescriptor 
 	if len(n.onDone) > 0 {
 		sd.OnDone = describeTransitions(n.onDone)
 	}
+	if n.uiStateSchema != nil {
+		sd.UIStateSchema = n.uiStateSchema
+	}
 	if len(n.children) > 0 {
 		sd.States = map[string]StateNodeDescriptor{}
 		for name, child := range n.children {
@@ -174,6 +179,9 @@ func describeTransitions[Ctx any, Evt any](ts []TransitionConfig[Ctx, Evt]) []Tr
 		}
 		if names := describeActions(t.Actions); len(names) > 0 {
 			td.Actions = names
+		}
+		if t.CondMeta != nil {
+			td.CondMeta = t.CondMeta
 		}
 		out = append(out, td)
 	}

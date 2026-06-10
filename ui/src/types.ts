@@ -11,6 +11,22 @@ export type NodeType =
   | "final"
   | "history";
 
+// CondField describes one predicate that a Guard checks on the actor context.
+// Mirrors vendor/github.com/arisros/fate/cond_meta.go.
+export interface CondField {
+  path: string; // "$.score" or "$.customer.name"
+  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "truthy" | "falsy";
+  value?: unknown;
+  label?: string; // human display override
+}
+
+// CondMeta is informational metadata about what a transition Guard checks.
+// Displayed as a live Gate panel in the studio inspector.
+export interface CondMeta {
+  fields?: CondField[];
+  sample?: unknown; // example context object that passes the guard
+}
+
 export interface GraphNode {
   id: string; // qualified node id
   label: string; // leaf display name
@@ -21,6 +37,7 @@ export interface GraphNode {
   history?: "shallow" | "deep";
   entry?: string[];
   exit?: string[];
+  uiStateSchema?: Record<string, unknown>; // JSON Schema for UIState return type
 }
 
 export interface GraphEdge {
@@ -31,6 +48,7 @@ export interface GraphEdge {
   guard?: string;
   actions?: string[];
   internal?: boolean;
+  condMeta?: CondMeta; // gate metadata for the studio inspector
 }
 
 export interface Graph {
@@ -55,6 +73,7 @@ export interface LiveSnapshot {
   context: unknown; // raw JSON
   status: string; // "running" | "stopped" | "done" | "error"
   ascii: string;
+  uiState?: unknown; // per-state payload from Go StateNodeConfig.UIState callback
   timers?: TimerInfo[];
   invocations?: InvokeInfo[];
 }
