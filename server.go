@@ -87,6 +87,35 @@ func (s *Server) lookup(name string) (Entry, bool) {
 	return Entry{}, false
 }
 
+// Machines returns the names of all registered machines. Useful for iterating
+// over all entries to apply configuration (e.g. reading proxy env vars).
+func (s *Server) Machines() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.entries))
+	for _, e := range s.entries {
+		names = append(names, e.Name)
+	}
+	return names
+}
+
+// SetProxyURL updates the ProxyURL for a registered machine. It is a no-op if
+// url is empty or the machine name is not registered. Call after LoadSnapshots
+// to configure live simulation via a remote fate httphandler.
+func (s *Server) SetProxyURL(name, url string) {
+	if url == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.entries {
+		if s.entries[i].Name == name {
+			s.entries[i].ProxyURL = url
+			return
+		}
+	}
+}
+
 // entryList returns a snapshot copy of the registered entries under the read
 // lock — safe to range over without holding the lock.
 func (s *Server) entryList() []Entry {

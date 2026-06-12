@@ -14,13 +14,17 @@ import (
 //	  "title": "LORA FSM Studio",
 //	  "addr": ":8090",
 //	  "snapshots": ["./.fate", "../other/.fate"],
-//	  "watch": true
+//	  "watch": true,
+//	  "proxyURLs": {"survey": "http://ltw:8083/fsm/survey"}
 //	}
 type Config struct {
-	Title     string   `json:"title,omitempty"`
-	Addr      string   `json:"addr,omitempty"`
-	Snapshots []string `json:"snapshots,omitempty"`
-	Watch     bool     `json:"watch,omitempty"`
+	Title     string            `json:"title,omitempty"`
+	Addr      string            `json:"addr,omitempty"`
+	Snapshots []string          `json:"snapshots,omitempty"`
+	Watch     bool              `json:"watch,omitempty"`
+	// ProxyURLs maps machine names to their remote fate httphandler base URLs.
+	// When set, the live simulator for that machine forwards to the remote handler.
+	ProxyURLs map[string]string `json:"proxyURLs,omitempty"`
 }
 
 // LoadConfig reads and parses a JSON config file.

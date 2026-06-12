@@ -98,6 +98,19 @@ func main() {
 	}
 	log.Printf("loaded %d machine(s) from %s", total, strings.Join(cfg.Snapshots, ", "))
 
+	// Apply ProxyURLs: config file first, then FATE_PROXY_<NAME> env vars override.
+	for name, url := range cfg.ProxyURLs {
+		srv.SetProxyURL(name, url)
+		log.Printf("proxy: %s → %s", name, url)
+	}
+	for _, e := range srv.Machines() {
+		envKey := "FATE_PROXY_" + strings.ToUpper(strings.ReplaceAll(e, "-", "_"))
+		if url := os.Getenv(envKey); url != "" {
+			srv.SetProxyURL(e, url)
+			log.Printf("proxy (env %s): %s → %s", envKey, e, url)
+		}
+	}
+
 	if cfg.Watch {
 		go srv.Watch(context.Background(), cfg.Snapshots...)
 		log.Printf("watching %s for changes", strings.Join(cfg.Snapshots, ", "))
