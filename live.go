@@ -69,7 +69,7 @@ type LiveSnapshot struct {
 	Path        string          `json:"path"`
 	Context     json.RawMessage `json:"context"`
 	Status      sc.ActorStatus  `json:"status"`
-	ASCII       string          `json:"ascii"` // ASCII diagram (CLI / static view)
+	ASCII       string          `json:"ascii"`             // ASCII diagram (CLI / static view)
 	UIState     json.RawMessage `json:"uiState,omitempty"` // per-state payload from StateNodeConfig.UIState
 	Timers      []TimerInfo     `json:"timers,omitempty"`
 	Invocations []InvokeInfo    `json:"invocations,omitempty"`
