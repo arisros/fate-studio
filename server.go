@@ -11,12 +11,15 @@ import (
 )
 
 // Entry is one registered machine. Build returns the static descriptor;
-// BuildLive (optional) returns a fresh live actor for the simulator.
+// BuildLive (optional) returns a fresh live actor for the simulator;
+// ProxyURL (optional) forwards /sim/{name}/* to a remote fate httphandler.
+// ProxyURL takes precedence over BuildLive when both are set.
 type Entry struct {
 	Name      string
 	Summary   string
 	Build     func() sc.MachineDescriptor
-	BuildLive func() LiveInstance // nil = static-only, no simulator
+	BuildLive func() LiveInstance // nil = static-only, no local simulator
+	ProxyURL  string              // remote fate httphandler base URL
 }
 
 // Server is an embeddable statechart studio. Construct with NewServer,

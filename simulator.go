@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -285,6 +287,24 @@ func (s *Server) handleSimRoute(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 {
 		sub = parts[1]
 	}
+
+	// ProxyURL: forward all sub-routes to the remote fate httphandler. The
+	// cookie is forwarded transparently so the remote session model is preserved.
+	if entry, ok := s.lookup(name); ok && entry.ProxyURL != "" && sub != "" {
+		base, err := url.Parse(entry.ProxyURL)
+		if err != nil {
+			http.Error(w, "bad proxy URL: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		proxy := httputil.NewSingleHostReverseProxy(base)
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/" + sub
+		r2.URL.RawPath = ""
+		r2.Host = base.Host
+		proxy.ServeHTTP(w, r2)
+		return
+	}
+
 	switch sub {
 	case "":
 		s.handleSimPage(w, r, name)

@@ -33,7 +33,7 @@ func (s *Server) handleAPIMachines(w http.ResponseWriter, _ *http.Request) {
 	entries := s.entryList()
 	out := make([]machineInfo, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, machineInfo{Name: e.Name, Summary: e.Summary, Live: e.BuildLive != nil})
+		out = append(out, machineInfo{Name: e.Name, Summary: e.Summary, Live: e.BuildLive != nil || e.ProxyURL != ""})
 	}
 	w.Header().Set("content-type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
