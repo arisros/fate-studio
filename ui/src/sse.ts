@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { LiveSnapshot } from "./types";
+import type { SimFrame } from "./types";
 
 export type ConnState = "connecting" | "open" | "closed";
 
@@ -7,24 +7,24 @@ export type ConnState = "connecting" | "open" | "closed";
 // latest LiveSnapshot. The fate_sid cookie (set by the server) scopes the
 // session, so the same browser shares one actor with the POST endpoints.
 export function useSimStream(name: string | undefined): {
-  snapshot: LiveSnapshot | null;
+  snapshot: SimFrame | null;
   conn: ConnState;
 } {
-  const [snapshot, setSnapshot] = useState<LiveSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<SimFrame | null>(null);
   const [conn, setConn] = useState<ConnState>("connecting");
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!name) return;
     setConn("connecting");
-    const es = new EventSource(`/sim/${encodeURIComponent(name)}/stream`, {
+    const es = new EventSource(`sim/${encodeURIComponent(name)}/stream`, {
       withCredentials: true,
     });
     esRef.current = es;
     es.onopen = () => setConn("open");
     es.onmessage = (ev) => {
       try {
-        setSnapshot(JSON.parse(ev.data) as LiveSnapshot);
+        setSnapshot(JSON.parse(ev.data) as SimFrame);
         setConn("open");
       } catch {
         /* ignore malformed frame */
@@ -42,6 +42,6 @@ export function useSimStream(name: string | undefined): {
 
 // applySnap merges a SnapResponse (from a POST) into snapshot state immediately,
 // so the UI updates without waiting for the SSE round-trip.
-export function nullSnapshot(): LiveSnapshot {
-  return { path: "", context: {}, status: "connecting", ascii: "" };
+export function nullSnapshot(): SimFrame {
+  return { path: "", context: {}, status: "connecting", ascii: "", events: [], timeline: [] };
 }
