@@ -219,8 +219,12 @@ func (e *liveActor[Ctx, Evt]) AvailableEvents() []string {
 		// only the leaf's own On map hid every such event from the studio.
 		for _, node := range descriptorChainAt(d, strings.TrimSpace(region)) {
 			for k := range node.On {
-				// "*" is the engine's catch-all key, not a real event name:
-				// it is matched as a fallback, never dispatched by name.
+				// "*" is the engine's catch-all key. It is dispatchable by
+				// name, but offering it as a button would be meaningless, so
+				// the list stays limited to named events. That makes the list
+				// complete for named transitions but not exhaustive: a state
+				// with an "*" entry anywhere on its chain also accepts events
+				// this list does not mention.
 				if k == "*" {
 					continue
 				}
