@@ -55,13 +55,22 @@ export interface LiveSnapshot {
   context: unknown; // raw JSON
   status: string; // "running" | "stopped" | "done" | "error"
   ascii: string;
+  // Event names sendable from the active configuration, resolved server-side.
+  // The server walks each active leaf up through its ancestors the way the
+  // engine does; deriving this from the graph client-side missed every event
+  // declared on a compound parent and offered non-events like "onDone".
+  events: string[];
   timers?: TimerInfo[];
   invocations?: InvokeInfo[];
 }
 
-export interface SnapResponse extends LiveSnapshot {
-  events: string[]; // events sendable from the active state
+// SimFrame is what both the SSE stream and the POST endpoints return: the
+// actor snapshot plus session state the client cannot derive on its own.
+export interface SimFrame extends LiveSnapshot {
+  timeline: string[]; // steps applied in this session, oldest first
 }
+
+export type SnapResponse = SimFrame;
 
 export interface MachineInfo {
   name: string;
