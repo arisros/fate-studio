@@ -29,29 +29,42 @@ type session struct {
 
 	mu       sync.Mutex
 	live     LiveInstance
-	subs     []chan LiveSnapshot
+	subs     []chan simFrame
 	history  [][]byte // snapshot bytes captured *before* each applied event
 	events   []string // event names, parallel to history
 	lastSeen time.Time
+}
+
+// simFrame is the single payload every simulator response carries — the SSE
+// stream and the POST endpoints alike. It is the actor snapshot plus the
+// session-level timeline, so a client never has to reconstruct session state
+// it cannot see (a reloaded page used to show an empty timeline while the
+// server still held the full history).
+type simFrame struct {
+	LiveSnapshot
+	Timeline []string `json:"timeline"`
+}
+
+// frameLocked builds the frame for the current state. The mutex must be held,
+// which is what makes "apply then publish" atomic: two concurrent requests can
+// no longer interleave such that the older snapshot is the one delivered last.
+func (s *session) frameLocked() simFrame {
+	tl := make([]string, len(s.events))
+	copy(tl, s.events)
+	return simFrame{LiveSnapshot: s.live.Snapshot(), Timeline: tl}
+}
+
+// frame returns the current frame under lock.
+func (s *session) frame() simFrame {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.frameLocked()
 }
 
 func (s *session) touch() {
 	s.mu.Lock()
 	s.lastSeen = time.Now()
 	s.mu.Unlock()
-}
-
-// snapshot returns the current LiveSnapshot under lock.
-func (s *session) snapshot() LiveSnapshot {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.live.Snapshot()
-}
-
-func (s *session) availableEvents() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.live.AvailableEvents()
 }
 
 // applyEvent pushes the pre-event snapshot to history, then dispatches. On
@@ -75,6 +88,7 @@ func (s *session) applyEvent(ctx context.Context, ev string) error {
 		}
 		return err
 	}
+	s.broadcastLocked()
 	return nil
 }
 
@@ -100,6 +114,7 @@ func (s *session) applyEffect(label string, fn func() error) error {
 		}
 		return err
 	}
+	s.broadcastLocked()
 	return nil
 }
 
@@ -126,7 +141,11 @@ func (s *session) undo() (bool, error) {
 	snap := s.history[len(s.history)-1]
 	s.history = s.history[:len(s.history)-1]
 	s.events = s.events[:len(s.events)-1]
-	return true, s.live.Restore(snap)
+	if err := s.live.Restore(snap); err != nil {
+		return true, err
+	}
+	s.broadcastLocked()
+	return true, nil
 }
 
 // reset rebuilds a fresh actor in place (keeping SSE subscribers attached) and
@@ -141,6 +160,7 @@ func (s *session) reset() error {
 	s.live = live
 	s.history = nil
 	s.events = nil
+	s.broadcastLocked()
 	return nil
 }
 
@@ -153,6 +173,7 @@ func (s *session) importSnapshot(b []byte) error {
 	}
 	s.history = nil
 	s.events = nil
+	s.broadcastLocked()
 	return nil
 }
 
@@ -170,20 +191,23 @@ func (s *session) persist() ([]byte, error) {
 	return s.live.Persist()
 }
 
-func (s *session) broadcast() {
-	snap := s.snapshot()
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// broadcastLocked publishes the current frame to every subscriber. The mutex
+// must be held — callers are the mutating methods themselves, so the state a
+// subscriber receives is exactly the state the mutation produced. Sends are
+// non-blocking: a subscriber that has fallen behind drops the frame rather
+// than stalling the session.
+func (s *session) broadcastLocked() {
+	frame := s.frameLocked()
 	for _, ch := range s.subs {
 		select {
-		case ch <- snap:
+		case ch <- frame:
 		default:
 		}
 	}
 }
 
-func (s *session) subscribe() (chan LiveSnapshot, func()) {
-	ch := make(chan LiveSnapshot, 4)
+func (s *session) subscribe() (chan simFrame, func()) {
+	ch := make(chan simFrame, 4)
 	s.mu.Lock()
 	s.subs = append(s.subs, ch)
 	s.mu.Unlock()
@@ -322,18 +346,11 @@ func (s *Server) sessionFor(w http.ResponseWriter, r *http.Request, name string)
 	return s.sessions.getOrCreate(name+"|"+token, entry.BuildLive)
 }
 
-// snapResponse is the JSON shape returned by send/reset/undo/import.
-type snapResponse struct {
-	LiveSnapshot
-	Events []string `json:"events"`
-}
-
+// writeSnapResponse returns the current frame — the same shape the SSE stream
+// pushes, so a client has one contract to parse rather than two.
 func writeSnapResponse(w http.ResponseWriter, sess *session) {
 	w.Header().Set("content-type", "application/json")
-	_ = json.NewEncoder(w).Encode(snapResponse{
-		LiveSnapshot: sess.snapshot(),
-		Events:       sess.availableEvents(),
-	})
+	_ = json.NewEncoder(w).Encode(sess.frame())
 }
 
 // handleSimPage serves the SPA shell for /sim/{name}. The session cookie is
@@ -353,7 +370,7 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 	w.Header().Set("cache-control", "no-cache")
 	w.Header().Set("connection", "keep-alive")
 
-	if err := writeSSE(w, sess.snapshot()); err != nil {
+	if err := writeSSE(w, sess.frame()); err != nil {
 		return
 	}
 	ch, unsub := sess.subscribe()
@@ -385,8 +402,8 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 	}
 }
 
-func writeSSE(w io.Writer, snap LiveSnapshot) error {
-	b, err := json.Marshal(snap)
+func writeSSE(w io.Writer, frame simFrame) error {
+	b, err := json.Marshal(frame)
 	if err != nil {
 		return err
 	}
@@ -419,7 +436,6 @@ func (s *Server) handleSimSend(w http.ResponseWriter, r *http.Request, name stri
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -443,7 +459,6 @@ func (s *Server) handleSimTimer(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -472,7 +487,6 @@ func (s *Server) handleSimInvoke(w http.ResponseWriter, r *http.Request, name st
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -490,7 +504,6 @@ func (s *Server) handleSimReset(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -513,7 +526,6 @@ func (s *Server) handleSimUndo(w http.ResponseWriter, r *http.Request, name stri
 		http.Error(w, "nothing to undo", http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -536,7 +548,6 @@ func (s *Server) handleSimImport(w http.ResponseWriter, r *http.Request, name st
 		http.Error(w, "import: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
