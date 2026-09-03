@@ -37,7 +37,10 @@ function Rows({ data }: { data: StateNodeData }) {
   return (
     <div className="nrows">
       {data.rows.map((e) => {
-        const can = interactive && data.activeLeaf && sendable.has(e.event);
+        // `active`, not `activeLeaf`: a transition declared on a compound
+        // parent is sendable while a descendant is active, and its row lives
+        // on the parent node — which is active but never a leaf.
+        const can = interactive && data.active && sendable.has(e.event);
         return (
           <div
             key={e.id}

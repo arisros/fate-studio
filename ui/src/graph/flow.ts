@@ -237,7 +237,10 @@ export function toFlow(
   });
 
   const edges: Edge<EdgeData>[] = graph.edges.map((e) => {
-    const sourceActive = active.leaves.has(nodePath(graph, e.source));
+    // An edge is live when its source is anywhere in the active configuration,
+    // not only when it is the active leaf: transitions declared on a compound
+    // parent fire while a descendant is active.
+    const sourceActive = active.paths.has(nodePath(graph, e.source));
     const isGlobal = gset.has(e.event);
     return {
       id: e.id,

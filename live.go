@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	sc "github.com/arisros/fate"
 )
@@ -70,6 +71,7 @@ type LiveSnapshot struct {
 	Context     json.RawMessage `json:"context"`
 	Status      sc.ActorStatus  `json:"status"`
 	ASCII       string          `json:"ascii"` // ASCII diagram (CLI / static view)
+	Events      []string        `json:"events"`
 	Timers      []TimerInfo     `json:"timers,omitempty"`
 	Invocations []InvokeInfo    `json:"invocations,omitempty"`
 }
@@ -80,6 +82,20 @@ type liveActor[Ctx any, Evt any] struct {
 	actor    *sc.Actor[Ctx, Evt]
 	dispatch func(name string) (Evt, error)
 	describe func() sc.MachineDescriptor
+
+	// descOnce memoises describe(). Every snapshot needs the descriptor (to
+	// render ASCII and to enumerate events), and describe is often a closure
+	// that rebuilds the whole machine — calling it per SSE frame rebuilt the
+	// machine several times per event. The topology a descriptor reports is
+	// fixed for a machine's lifetime, so one call is enough.
+	descOnce sync.Once
+	desc     sc.MachineDescriptor
+}
+
+// descriptor returns the memoised MachineDescriptor. See descOnce.
+func (e *liveActor[Ctx, Evt]) descriptor() sc.MachineDescriptor {
+	e.descOnce.Do(func() { e.desc = e.describe() })
+	return e.desc
 }
 
 // NewLiveActor builds a LiveInstance from a machine, an event-name
@@ -130,7 +146,7 @@ func (e *liveActor[Ctx, Evt]) SendEvent(_ context.Context, name string) error {
 func (e *liveActor[Ctx, Evt]) Snapshot() LiveSnapshot {
 	snap := e.actor.Snapshot()
 	ctxBytes, _ := json.Marshal(snap.Context)
-	d := e.describe()
+	d := e.descriptor()
 	activePath := snap.Value.Path()
 	hl := highlightForActivePath(activePath)
 	return LiveSnapshot{
@@ -138,6 +154,7 @@ func (e *liveActor[Ctx, Evt]) Snapshot() LiveSnapshot {
 		Context:     ctxBytes,
 		Status:      snap.Status,
 		ASCII:       sc.RenderASCII(d, sc.RenderOptions{Highlight: hl}),
+		Events:      e.AvailableEvents(),
 		Timers:      e.PendingTimers(),
 		Invocations: e.PendingInvocations(),
 	}
@@ -190,22 +207,29 @@ func (e *liveActor[Ctx, Evt]) Persist() ([]byte, error) {
 }
 
 func (e *liveActor[Ctx, Evt]) AvailableEvents() []string {
-	d := e.describe()
+	d := e.descriptor()
 	path := e.actor.Snapshot().Value.Path()
 	seen := map[string]struct{}{}
-	var evts []string
+	evts := []string{} // never nil: the field marshals as [] rather than null
 	// Parallel paths look like "a.x | b.y"; gather events from each region.
 	for _, region := range strings.Split(path, " | ") {
-		node, ok := descriptorNodeAt(d, strings.TrimSpace(region))
-		if !ok {
-			continue
-		}
-		for k := range node.On {
-			if _, dup := seen[k]; dup {
-				continue
+		// The engine selects a transition by walking the active leaf up
+		// through its ancestors (see selectTransitions), so an event declared
+		// on a compound parent is sendable from any descendant. Collecting
+		// only the leaf's own On map hid every such event from the studio.
+		for _, node := range descriptorChainAt(d, strings.TrimSpace(region)) {
+			for k := range node.On {
+				// "*" is the engine's catch-all key, not a real event name:
+				// it is matched as a fallback, never dispatched by name.
+				if k == "*" {
+					continue
+				}
+				if _, dup := seen[k]; dup {
+					continue
+				}
+				seen[k] = struct{}{}
+				evts = append(evts, k)
 			}
-			seen[k] = struct{}{}
-			evts = append(evts, k)
 		}
 	}
 	sort.Strings(evts)
@@ -230,23 +254,31 @@ func highlightForActivePath(path string) map[string]rune {
 	return h
 }
 
-// descriptorNodeAt walks a MachineDescriptor by dot-path. Local copy of the
-// engine's unexported lookupDescriptorPath.
-func descriptorNodeAt(d sc.MachineDescriptor, path string) (sc.StateNodeDescriptor, bool) {
+// descriptorChainAt walks a MachineDescriptor by dot-path and returns every
+// node along the way — the addressed node and each of its ancestors, outermost
+// first. Callers that need the leaf alone take the last element.
+//
+// The engine resolves an event against this same chain, so the studio has to
+// reproduce the walk: the descriptor records a transition only on the node that
+// declares it, and there is no engine API that enumerates the events reachable
+// from a state. Returns nil if the path does not resolve.
+func descriptorChainAt(d sc.MachineDescriptor, path string) []sc.StateNodeDescriptor {
 	if path == "" {
-		return sc.StateNodeDescriptor{}, false
+		return nil
 	}
 	segs := strings.Split(path, ".")
 	cur, ok := d.States[segs[0]]
 	if !ok {
-		return sc.StateNodeDescriptor{}, false
+		return nil
 	}
+	chain := []sc.StateNodeDescriptor{cur}
 	for _, s := range segs[1:] {
 		next, ok := cur.States[s]
 		if !ok {
-			return sc.StateNodeDescriptor{}, false
+			return nil
 		}
 		cur = next
+		chain = append(chain, cur)
 	}
-	return cur, true
+	return chain
 }
