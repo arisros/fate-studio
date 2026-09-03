@@ -39,6 +39,7 @@ The studio is an `http.Handler`. Register your machines and mount it:
 import "github.com/arisros/fate-studio"
 
 srv := studio.NewServer("my app")
+srv.SetBasePath("/studio/") // the prefix you mount at; omit when serving at "/"
 srv.Register(studio.Entry{
     Name:    "checkout",
     Summary: "the checkout flow",
@@ -50,6 +51,10 @@ srv.Register(studio.Entry{
 
 http.Handle("/studio/", http.StripPrefix("/studio", srv.Handler()))
 ```
+
+Mounting under a prefix needs `srv.SetBasePath("/studio/")` before serving, so
+the page loads its bundle and calls its API under that prefix instead of the
+site root. Serving at the root needs no call.
 
 `dispatch` maps an event name from the UI to one of your typed events. A machine
 registered with only `Build` (no `BuildLive`) shows its static diagram without

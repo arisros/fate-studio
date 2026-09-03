@@ -1,5 +1,9 @@
 import type { Graph, MachineInfo, SnapResponse } from "./types";
 
+// Every URL here is RELATIVE. The server injects <base href="{mount prefix}">
+// into the page shell, so these resolve correctly whether the studio is served
+// at the site root or mounted under a path like /studio/.
+
 async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url, { credentials: "same-origin" });
   if (!r.ok) throw new Error(`${url}: ${r.status} ${await r.text()}`);
@@ -18,23 +22,23 @@ async function postForm(url: string, body: Record<string, string>): Promise<Snap
 }
 
 export const api = {
-  machines: () => getJSON<MachineInfo[]>("/api/machines"),
-  graph: (name: string) => getJSON<Graph>(`/m/${encodeURIComponent(name)}/graph`),
-  describe: (name: string) => getJSON<unknown>(`/m/${encodeURIComponent(name)}/describe`),
+  machines: () => getJSON<MachineInfo[]>("api/machines"),
+  graph: (name: string) => getJSON<Graph>(`m/${encodeURIComponent(name)}/graph`),
+  describe: (name: string) => getJSON<unknown>(`m/${encodeURIComponent(name)}/describe`),
 
   send: (name: string, event: string) =>
-    postForm(`/sim/${encodeURIComponent(name)}/send`, { event }),
+    postForm(`sim/${encodeURIComponent(name)}/send`, { event }),
   timer: (name: string, id: string) =>
-    postForm(`/sim/${encodeURIComponent(name)}/timer`, { id }),
+    postForm(`sim/${encodeURIComponent(name)}/timer`, { id }),
   resolve: (name: string, id: string, output: string) =>
-    postForm(`/sim/${encodeURIComponent(name)}/invoke`, { id, action: "resolve", output }),
+    postForm(`sim/${encodeURIComponent(name)}/invoke`, { id, action: "resolve", output }),
   reject: (name: string, id: string, error: string) =>
-    postForm(`/sim/${encodeURIComponent(name)}/invoke`, { id, action: "reject", error }),
-  reset: (name: string) => postForm(`/sim/${encodeURIComponent(name)}/reset`, {}),
-  undo: (name: string) => postForm(`/sim/${encodeURIComponent(name)}/undo`, {}),
+    postForm(`sim/${encodeURIComponent(name)}/invoke`, { id, action: "reject", error }),
+  reset: (name: string) => postForm(`sim/${encodeURIComponent(name)}/reset`, {}),
+  undo: (name: string) => postForm(`sim/${encodeURIComponent(name)}/undo`, {}),
 
   async importSnapshot(name: string, body: string): Promise<SnapResponse> {
-    const r = await fetch(`/sim/${encodeURIComponent(name)}/import`, {
+    const r = await fetch(`sim/${encodeURIComponent(name)}/import`, {
       method: "POST",
       credentials: "same-origin",
       body,
@@ -43,5 +47,5 @@ export const api = {
     return (await r.json()) as SnapResponse;
   },
 
-  exportURL: (name: string) => `/sim/${encodeURIComponent(name)}/export`,
+  exportURL: (name: string) => `sim/${encodeURIComponent(name)}/export`,
 };
