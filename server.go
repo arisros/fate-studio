@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	sc "github.com/arisros/fate"
@@ -25,19 +26,50 @@ type Entry struct {
 // Vite and committed to assets/). The server is a JSON/SSE API + SPA host:
 // machine structure comes from /m/{name}/graph, live state over /sim/{name}/*.
 type Server struct {
-	title   string
-	entries []Entry
+	title    string
+	basePath string
+	entries  []Entry
 
-	// live sessions keyed by machine name (one shared session per machine).
+	// live sessions keyed by machine name + session token, so two browsers
+	// drive independent actors of the same machine.
 	sessions *sessionStore
+
+	shellOnce sync.Once
+	shell     []byte
 }
 
-// NewServer returns an empty studio. title appears in the page header.
+// NewServer returns an empty studio mounted at "/". title appears in the page
+// header; use SetBasePath to mount it under a prefix.
 func NewServer(title string) *Server {
 	if title == "" {
 		title = "fate studio"
 	}
-	return &Server{title: title, sessions: newSessionStore()}
+	return &Server{title: title, basePath: "/", sessions: newSessionStore()}
+}
+
+// SetBasePath declares the URL prefix the studio is mounted at, so an embedded
+// studio can live somewhere other than the site root:
+//
+//	srv.SetBasePath("/studio/")
+//	http.Handle("/studio/", http.StripPrefix("/studio", srv.Handler()))
+//
+// The SPA loads its bundle and calls its API relative to this prefix. Without
+// it a mounted studio would request /assets/... and /api/... at the site root
+// and serve a blank page. Call it before serving; the page shell is built once
+// on the first request. Returns the server for chaining.
+func (s *Server) SetBasePath(p string) *Server {
+	s.basePath = normalizeBasePath(p)
+	return s
+}
+
+// normalizeBasePath returns p as a prefix with exactly one leading and one
+// trailing slash ("studio" and "/studio" both become "/studio/").
+func normalizeBasePath(p string) string {
+	p = strings.Trim(p, "/")
+	if p == "" {
+		return "/"
+	}
+	return "/" + p + "/"
 }
 
 // Register adds a machine. build is required (static view); buildLive is
