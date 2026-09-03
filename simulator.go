@@ -281,7 +281,9 @@ const sessionCookie = "fate_sid"
 
 // tokenFor reads the session token from the cookie, minting + setting one when
 // absent. Per-browser isolation: each token gets its own actor per machine.
-func tokenFor(w http.ResponseWriter, r *http.Request) string {
+// The cookie is scoped to basePath so a mounted studio does not put its cookie
+// on every request the surrounding site makes.
+func tokenFor(w http.ResponseWriter, r *http.Request, basePath string) string {
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 		return c.Value
 	}
@@ -289,8 +291,11 @@ func tokenFor(w http.ResponseWriter, r *http.Request) string {
 	_, _ = rand.Read(b)
 	tok := hex.EncodeToString(b)
 	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: tok, Path: "/",
+		Name: sessionCookie, Value: tok, Path: basePath,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		// Set only over TLS: a Secure cookie on a plain-HTTP dev server would
+		// never be stored, breaking the local `go run ./cmd/fate-studio` flow.
+		Secure: r.TLS != nil,
 	})
 	return tok
 }
@@ -342,7 +347,7 @@ func (s *Server) sessionFor(w http.ResponseWriter, r *http.Request, name string)
 	if !ok {
 		return nil, fmt.Errorf("unknown machine %q", name)
 	}
-	token := tokenFor(w, r)
+	token := tokenFor(w, r, s.basePath)
 	return s.sessions.getOrCreate(name+"|"+token, entry.BuildLive)
 }
 
