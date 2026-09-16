@@ -4,7 +4,7 @@
 
 export interface ActiveSet {
   paths: Set<string>; // every active path incl. ancestors
-  leaves: Set<string>; // only the active leaf paths (sendable origins)
+  leaves: Set<string>; // only the active leaf paths
 }
 
 export function activeFromPath(path: string): ActiveSet {

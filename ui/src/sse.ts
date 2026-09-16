@@ -4,7 +4,7 @@ import type { SimFrame } from "./types";
 export type ConnState = "connecting" | "open" | "closed";
 
 // useSimStream opens an EventSource to /sim/{name}/stream and exposes the
-// latest LiveSnapshot. The fate_sid cookie (set by the server) scopes the
+// latest SimFrame. The fate_sid cookie (set by the server) scopes the
 // session, so the same browser shares one actor with the POST endpoints.
 export function useSimStream(name: string | undefined): {
   snapshot: SimFrame | null;
@@ -38,10 +38,4 @@ export function useSimStream(name: string | undefined): {
   }, [name]);
 
   return { snapshot, conn };
-}
-
-// applySnap merges a SnapResponse (from a POST) into snapshot state immediately,
-// so the UI updates without waiting for the SSE round-trip.
-export function nullSnapshot(): SimFrame {
-  return { path: "", context: {}, status: "connecting", ascii: "", events: [], timeline: [] };
 }

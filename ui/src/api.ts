@@ -1,8 +1,4 @@
-import type { Graph, MachineInfo, SnapResponse } from "./types";
-
-// Every URL here is RELATIVE. The server injects <base href="{mount prefix}">
-// into the page shell, so these resolve correctly whether the studio is served
-// at the site root or mounted under a path like /studio/.
+import type { Graph, MachineInfo, SimFrame } from "./types";
 
 async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url, { credentials: "same-origin" });
@@ -10,7 +6,7 @@ async function getJSON<T>(url: string): Promise<T> {
   return (await r.json()) as T;
 }
 
-async function postForm(url: string, body: Record<string, string>): Promise<SnapResponse> {
+async function postForm(url: string, body: Record<string, string>): Promise<SimFrame> {
   const r = await fetch(url, {
     method: "POST",
     credentials: "same-origin",
@@ -18,9 +14,11 @@ async function postForm(url: string, body: Record<string, string>): Promise<Snap
     body: new URLSearchParams(body).toString(),
   });
   if (!r.ok) throw new Error(await r.text());
-  return (await r.json()) as SnapResponse;
+  return (await r.json()) as SimFrame;
 }
 
+// URLs are relative: they resolve against the <base> the server injects, so the
+// studio works both at the site root and under a mount prefix.
 export const api = {
   machines: () => getJSON<MachineInfo[]>("api/machines"),
   graph: (name: string) => getJSON<Graph>(`m/${encodeURIComponent(name)}/graph`),
@@ -37,15 +35,24 @@ export const api = {
   reset: (name: string) => postForm(`sim/${encodeURIComponent(name)}/reset`, {}),
   undo: (name: string) => postForm(`sim/${encodeURIComponent(name)}/undo`, {}),
 
-  async importSnapshot(name: string, body: string): Promise<SnapResponse> {
+  async importSnapshot(name: string, body: string): Promise<SimFrame> {
     const r = await fetch(`sim/${encodeURIComponent(name)}/import`, {
       method: "POST",
       credentials: "same-origin",
       body,
     });
     if (!r.ok) throw new Error(await r.text());
-    return (await r.json()) as SnapResponse;
+    return (await r.json()) as SimFrame;
   },
 
   exportURL: (name: string) => `sim/${encodeURIComponent(name)}/export`,
+
+  // onGraphChanged opens the server-global /events SSE stream and invokes cb
+  // with the affected machine name whenever a watched snapshot is hot-reloaded.
+  // Returns an unsubscribe function. Used by the snapshot viewer for live reload.
+  onGraphChanged(cb: (name: string) => void): () => void {
+    const es = new EventSource("events", { withCredentials: true });
+    es.addEventListener("graph-changed", (e) => cb((e as MessageEvent).data as string));
+    return () => es.close();
+  },
 };
