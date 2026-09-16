@@ -49,7 +49,7 @@ export function VSimPanel({
       <div className="vsim-header">
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
           <span className="vsim-title">Virtual Sim</span>
-          <span className="vsim-subtitle">guards not evaluated</span>
+          <span className="vsim-subtitle">guards not run; gates checked against the context</span>
         </div>
         <button className="vsim-close" onClick={onClose} title="Close">✕</button>
       </div>
@@ -137,7 +137,7 @@ function DecisionPanel({
         </span>
       </div>
       <div className="vsim-decision-hint">
-        Guards not evaluated — choose where to go:
+        Guards are not run, so choose where to go:
       </div>
       <div className="vsim-decision-choices">
         {decision.choices.map((choice) => {

@@ -45,6 +45,9 @@ export const api = {
     return (await r.json()) as SimFrame;
   },
 
+  timeline: (name: string) =>
+    getJSON<{ events: string[] }>(`sim/${encodeURIComponent(name)}/timeline`).then((r) => r.events ?? []),
+
   exportURL: (name: string) => `sim/${encodeURIComponent(name)}/export`,
 
   // onGraphChanged opens the server-global /events SSE stream and invokes cb

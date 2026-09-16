@@ -16,6 +16,7 @@ export function useSimStream(name: string | undefined): {
 
   useEffect(() => {
     if (!name) return;
+    setSnapshot(null);
     setConn("connecting");
     const es = new EventSource(`sim/${encodeURIComponent(name)}/stream`, {
       withCredentials: true,

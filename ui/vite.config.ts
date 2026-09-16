@@ -1,12 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
-const wasmSrc  = path.resolve(__dirname, "node_modules/libavoid-js/dist/libavoid.wasm");
-const wasmDist = path.resolve(__dirname, "../assets/libavoid.wasm");
 
 // The Go server embeds the build output (../assets) via go:embed and serves
 // hashed files under /assets/*, with index.html returned for all SPA routes.
@@ -16,25 +13,17 @@ const wasmDist = path.resolve(__dirname, "../assets/libavoid.wasm");
 // and their CSS) are emitted relative to the importing chunk, which the server
 // cannot rewrite. API calls and the SSE stream resolve against <base>.
 export default defineConfig({
-  plugins: [
-    react(),
-    {
-      // Make libavoid.wasm available at /assets/libavoid.wasm:
-      //   dev  → Vite middleware intercepts the request
-      //   prod → writeBundle copies the file next to the hashed JS bundle
-      name: "libavoid-wasm",
-      configureServer(server) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        server.middlewares.use("/assets/libavoid.wasm", (_req: any, res: any) => {
-          res.setHeader("Content-Type", "application/wasm");
-          fs.createReadStream(wasmSrc).pipe(res);
-        });
+  plugins: [react()],
+  resolve: {
+    // libavoid-js does not export its WASM; importing it with ?url lets Vite
+    // emit it once, hashed, next to the chunk that loads it.
+    alias: [
+      {
+        find: /^libavoid-wasm(?=\?|$)/,
+        replacement: path.resolve(__dirname, "node_modules/libavoid-js/dist/libavoid.wasm"),
       },
-      writeBundle() {
-        if (fs.existsSync(wasmSrc)) fs.copyFileSync(wasmSrc, wasmDist);
-      },
-    },
-  ],
+    ],
+  },
   base: "/assets/",
   experimental: {
     renderBuiltUrl: (filename, { hostType }) =>

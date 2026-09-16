@@ -29,7 +29,11 @@ go run ./cmd/fate-studio --config studio.json                     # see Config i
 
 A snapshot is a `MachineDescriptor` as JSON (what `fate/snapshot.Emit` writes). It
 renders as a chart with no runtime behind it. To simulate it, point the machine at
-a fate `httphandler` with `proxyURLs` in the config or `FATE_PROXY_<NAME>`.
+a fate `httphandler` with `proxyURLs` in the config or the `FATE_PROXY_<NAME>`
+environment variable, where `NAME` is the machine name upper-cased with every
+other character replaced by `_` (`order-v2` reads `FATE_PROXY_ORDER_V2`). Flags
+override the config file. A snapshot never replaces a live machine of the same
+name.
 
 Or with Docker:
 
@@ -55,6 +59,10 @@ UI tests run against fixtures generated from them.
 | `fetch` | invocations |
 | `order` | parallel lanes, self-loops, layout |
 | `ticket` | global events (badged, not drawn), guarded branches in the virtual sim |
+
+Gate metadata and per-state view models get demos once the engine release that
+adds them (arisros/fate#13) is tagged. Until then the vendored engine is a
+pre-release copy, so the module builds with `-mod=vendor` only.
 
 After changing a demo, run `make fixtures` to regenerate `testdata/snapshots` and
 `ui/src/graph/__fixtures__`; `go test` fails while they are stale.

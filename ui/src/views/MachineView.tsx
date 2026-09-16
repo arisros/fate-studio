@@ -16,6 +16,15 @@ export function MachineView() {
   const [vsim, setVsim] = useState<VirtualSimulator | null>(null);
   const [vsimPath, setVsimPath] = useState("");
   const [vsimDecision, setVsimDecision] = useState<PendingDecision | null>(null);
+  const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    setLive(false);
+    api
+      .machines()
+      .then((ms) => setLive(ms.some((m) => m.name === name && m.live)))
+      .catch(() => {});
+  }, [name]);
 
   useEffect(() => {
     setGraph(null);
@@ -30,6 +39,9 @@ export function MachineView() {
   useEffect(() => {
     return api.onGraphChanged((changed) => {
       if (changed === name) {
+        setVsim(null);
+        setVsimPath("");
+        setVsimDecision(null);
         api.graph(name).then(setGraph).catch((e) => setErr(String(e)));
       }
     });
@@ -59,8 +71,10 @@ export function MachineView() {
     <div className="machine-view">
       <div className="subbar">
         <span className="mtitle">{name}</span>
-        <Link to={`/sim/${encodeURIComponent(name)}`} className="btn primary">▶ simulate</Link>
-        <a href={`/m/${encodeURIComponent(name)}/describe`} className="btn ghost" target="_blank" rel="noreferrer">
+        {live && (
+          <Link to={`/sim/${encodeURIComponent(name)}`} className="btn primary">▶ simulate</Link>
+        )}
+        <a href={`m/${encodeURIComponent(name)}/describe`} className="btn ghost" target="_blank" rel="noreferrer">
           JSON descriptor
         </a>
         <button className="btn ghost" onClick={toggleVsim} disabled={!graph}>

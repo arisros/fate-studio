@@ -74,14 +74,18 @@ export interface LiveSnapshot {
   status: string; // "running" | "stopped" | "done" | "error"
   ascii: string;
   uiState?: unknown; // per-state payload from Go StateNodeConfig.UIState callback
-  events: string[]; // sendable from the active configuration, resolved server-side
+  // Sendable from the active configuration. A proxied fate httphandler stream
+  // omits it, and the UI then derives the list from the graph.
+  events?: string[];
   timers?: TimerInfo[];
   invocations?: InvokeInfo[];
 }
 
 // SimFrame is what the SSE stream and the POST endpoints both return.
 export interface SimFrame extends LiveSnapshot {
-  timeline: string[]; // steps applied in this session, oldest first
+  // Steps applied in this session, oldest first. Omitted by a proxied fate
+  // httphandler stream; the UI then reads GET sim/{name}/timeline.
+  timeline?: string[];
 }
 
 export interface MachineInfo {

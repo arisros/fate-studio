@@ -66,6 +66,9 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
 
   const vm = useMemo(() => buildViewModel(graph), [graph]);
   const active = useMemo(() => activeFromPath(activePath), [activePath]);
+  // Layout is async; it reads the active set at the end, not when it started.
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   const routerRef = useRef<AvoidRouter | null>(null);
   const isDraggingRef = useRef(false);
@@ -105,8 +108,8 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
         if (p) layout.rel.set(id, { ...p, x: o.x, y: o.y });
       }
 
-      const ns = buildNodes(vm, layout.rel, active, compact);
-      const es = buildEdges(vm, active, compact);
+      const ns = buildNodes(vm, layout.rel, activeRef.current, compact);
+      const es = buildEdges(vm, activeRef.current, compact);
       const abs = absOf(ns);
 
       // Only leaf nodes (not containers) are libavoid obstacles — containers are
@@ -133,6 +136,15 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vm, machine, version, compact]);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      routerRef.current?.destroy();
+      routerRef.current = null;
+    },
+    [],
+  );
 
   // Re-route on drag — rAF-coalesced so libavoid runs at most once per frame.
   useEffect(() => {

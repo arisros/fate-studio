@@ -98,6 +98,22 @@ for (const host of HOSTS) {
 
         await page.screenshot({ path: path.join(dir, `${m.name}.png`) });
 
+        const describeURL = await page
+          .locator("a", { hasText: "JSON descriptor" })
+          .evaluate((a) => (a as HTMLAnchorElement).href);
+        const describe = await page.request.get(describeURL);
+        if (!describe.ok()) problems.push(`${m.name}: descriptor link ${describeURL} returned ${describe.status()}`);
+
+        if (m.live) {
+          await page.goto(`${host}/sim/${encodeURIComponent(m.name)}`, { waitUntil: "domcontentloaded" });
+          await page.waitForSelector(".react-flow__node", { timeout: 20000 }).catch(() => {});
+          await page.waitForTimeout(1500);
+          const status = (await page.locator(".subbar").innerText()).toLowerCase();
+          if (!status.includes("running") && !status.includes("done")) {
+            problems.push(`${m.name}: simulator never reached a running actor (${status.replace(/\s+/g, " ")})`);
+          }
+        }
+
         if (nodeCount === 0) problems.push(`${m.name}: no nodes rendered`);
         if (edgeCount === 0) problems.push(`${m.name}: no edges rendered`);
         if (overlaps > 0) problems.push(`${m.name}: ${overlaps} leaf-node overlap(s)`);
