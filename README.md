@@ -3,8 +3,8 @@
 A self-hosted studio for [fate](https://github.com/arisros/fate) statecharts: a
 chart viewer and a live simulator you drive in the browser.
 
-Open a machine to see its diagram, then step through it — send events, fire
-delayed transitions, resolve or reject invocations — and watch the active state
+Open a machine to see its diagram, then step through it: send events, fire
+delayed transitions, resolve or reject invocations, and watch the active state
 update in real time over Server-Sent Events. Snapshots inspect, diff, import, and
 export; a timeline records each step; the canvas lays itself out with elkjs.
 
@@ -19,6 +19,18 @@ go run ./cmd/fate-studio
 # then open http://localhost:8090
 ```
 
+With no `./.fate` directory, the binary serves the built-in demos. Other modes:
+
+```sh
+go run ./cmd/fate-studio --snapshots testdata/snapshots --watch   # descriptor snapshots, hot-reloaded
+go run ./cmd/fate-studio --demos --snapshots ./.fate              # both
+go run ./cmd/fate-studio --config studio.json                     # see Config in config.go
+```
+
+A snapshot is a `MachineDescriptor` as JSON (what `fate/snapshot.Emit` writes). It
+renders as a chart with no runtime behind it. To simulate it, point the machine at
+a fate `httphandler` with `proxyURLs` in the config or `FATE_PROXY_<NAME>`.
+
 Or with Docker:
 
 ```sh
@@ -26,10 +38,26 @@ docker build -t fate-studio .
 docker run --rm -p 8090:8090 fate-studio
 ```
 
-The address is configurable with `FATE_STUDIO_ADDR` (default `:8090`). The server
-ships a set of demo machines — a traffic light, parallel media player, a build
-pipeline, a deep-history editor, a live-context counter, and `timeout` / `fetch`
-machines that show the timer and invocation controls.
+The address is configurable with `--addr` or `FATE_STUDIO_ADDR` (default `:8090`).
+
+## Demos
+
+The demos in `internal/demos` are the reference for every studio feature, and the
+UI tests run against fixtures generated from them.
+
+| Demo | Feature |
+|---|---|
+| `traffic-light`, `pipeline` | transitions, final states |
+| `media-player` | parallel regions advancing together |
+| `editor` | deep history |
+| `counter` | live context |
+| `timeout` | delayed transitions |
+| `fetch` | invocations |
+| `order` | parallel lanes, self-loops, layout |
+| `ticket` | global events (badged, not drawn), guarded branches in the virtual sim |
+
+After changing a demo, run `make fixtures` to regenerate `testdata/snapshots` and
+`ui/src/graph/__fixtures__`; `go test` fails while they are stale.
 
 ## Embed it in your own program
 
@@ -62,10 +90,18 @@ the live simulator.
 
 ## Design
 
-The UI follows a small design language captured in [DESIGN.md](DESIGN.md) — a
-violet-midnight palette with an electric-lime accent, applied in hand-written CSS.
-There is no build step and no external font or asset request: the server is a
-single static binary with everything embedded.
+The UI follows a small design language captured in [DESIGN.md](DESIGN.md), a
+violet-midnight palette with an electric-lime accent. The UI is a Vite + React
+app under `ui/`; `make ui` builds it into `assets/`, which is committed and
+embedded, so the Go build needs no Node toolchain and makes no external request.
+
+## Tests
+
+```sh
+make test                  # Go
+cd ui && npm test          # UI unit tests
+cd ui && npx playwright test   # renders every demo, at / and mounted under /studio/
+```
 
 ## License
 
