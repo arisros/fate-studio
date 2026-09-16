@@ -15,6 +15,7 @@ import (
 	"time"
 
 	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/render"
 )
 
 // clientFor returns an http.Client with a cookie jar (so fate_sid persists
@@ -184,7 +185,7 @@ func TestServer_GraphEndpoint(t *testing.T) {
 	}
 	b, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	var g sc.Graph
+	var g render.Graph
 	if err := json.Unmarshal(b, &g); err != nil {
 		t.Fatalf("graph unmarshal: %v", err)
 	}

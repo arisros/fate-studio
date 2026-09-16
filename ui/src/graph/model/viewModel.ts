@@ -82,7 +82,7 @@ export function buildViewModel(graph: Graph): ViewModel {
           index: i,
           selfLoop: e.source === e.target,
           label: edgeLabel(e),
-          condMeta: e.condMeta,
+          condMeta: e.cond_meta,
         });
         i++;
       }

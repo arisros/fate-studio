@@ -11,21 +11,21 @@
         "DEC": [
           {
             "actions": [
-              ""
+              "assign"
             ]
           }
         ],
         "INC": [
           {
             "actions": [
-              ""
+              "assign"
             ]
           }
         ],
         "RESET": [
           {
             "actions": [
-              ""
+              "assign"
             ]
           }
         ]

@@ -27,7 +27,7 @@
                   {
                     "internal": true,
                     "actions": [
-                      ""
+                      "countUpdate"
                     ]
                   }
                 ]
@@ -53,6 +53,21 @@
                 ]
               }
             }
+          },
+          "ui_state_schema": {
+            "properties": {
+              "lane": {
+                "type": "string"
+              },
+              "updates": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "lane",
+              "updates"
+            ],
+            "type": "object"
           }
         },
         "payment": {
@@ -71,7 +86,7 @@
                   {
                     "internal": true,
                     "actions": [
-                      ""
+                      "countUpdate"
                     ]
                   }
                 ]
@@ -113,6 +128,21 @@
             "voided": {
               "type": "final"
             }
+          },
+          "ui_state_schema": {
+            "properties": {
+              "lane": {
+                "type": "string"
+              },
+              "updates": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "lane",
+              "updates"
+            ],
+            "type": "object"
           }
         },
         "support": {

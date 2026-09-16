@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { VirtualSimulator } from "./virtualSim";
+import { evaluateGates } from "./gateEval";
 import order from "../__fixtures__/order.graph.json";
 import mediaPlayer from "../__fixtures__/media-player.graph.json";
 import ticket from "../__fixtures__/ticket.graph.json";
@@ -115,6 +116,19 @@ describe("VirtualSimulator: guarded branches (ticket)", () => {
     expect(d.event).toBe("ROUTE");
     expect(d.choices.map((c) => c.targetPath).sort()).toEqual(["billing", "general", "technical"]);
     expect(d.choices.some((c) => c.isSelfLoop)).toBe(false);
+  });
+
+  it("carries each branch's gate so the panel can check it", () => {
+    sim.send("NEXT");
+    sim.send("ROUTE");
+    const byPath = new Map(sim.pendingDecision!.choices.map((c) => [c.targetPath, c.condMeta]));
+    expect(byPath.get("billing")).toEqual({
+      fields: [{ path: "$.category", op: "eq", value: "billing" }],
+      sample: { category: "billing" },
+    });
+    expect(byPath.get("general")).toBeUndefined();
+    const evals = evaluateGates(byPath.get("technical")!, { category: "technical" });
+    expect(evals.map((e) => e.status)).toEqual(["open"]);
   });
 
   it("decide() commits the chosen branch", () => {

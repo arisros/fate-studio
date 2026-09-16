@@ -69,7 +69,7 @@
           {
             "internal": true,
             "actions": [
-              ""
+              "setCategory"
             ]
           }
         ],
@@ -77,7 +77,7 @@
           {
             "internal": true,
             "actions": [
-              ""
+              "setCategory"
             ]
           }
         ],
@@ -98,12 +98,26 @@
         ],
         "NEXT": [
           {
-            "target": "closed"
+            "target": "closed",
+            "guard": "approved",
+            "cond_meta": {
+              "fields": [
+                {
+                  "path": "$.approvals",
+                  "op": "gte",
+                  "value": 1,
+                  "label": "already approved once"
+                }
+              ],
+              "sample": {
+                "approvals": 1
+              }
+            }
           },
           {
             "internal": true,
             "actions": [
-              ""
+              "recordApproval"
             ]
           }
         ],
@@ -112,6 +126,25 @@
             "target": "in_progress"
           }
         ]
+      },
+      "ui_state_schema": {
+        "properties": {
+          "approvals": {
+            "type": "integer"
+          },
+          "needed": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approvals",
+          "needed",
+          "ready"
+        ],
+        "type": "object"
       }
     },
     "technical": {
@@ -139,10 +172,36 @@
         ],
         "ROUTE": [
           {
-            "target": "billing"
+            "target": "billing",
+            "guard": "is_billing",
+            "cond_meta": {
+              "fields": [
+                {
+                  "path": "$.category",
+                  "op": "eq",
+                  "value": "billing"
+                }
+              ],
+              "sample": {
+                "category": "billing"
+              }
+            }
           },
           {
-            "target": "technical"
+            "target": "technical",
+            "guard": "is_technical",
+            "cond_meta": {
+              "fields": [
+                {
+                  "path": "$.category",
+                  "op": "eq",
+                  "value": "technical"
+                }
+              ],
+              "sample": {
+                "category": "technical"
+              }
+            }
           },
           {
             "target": "general"
