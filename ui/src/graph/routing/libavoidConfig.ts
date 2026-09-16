@@ -10,6 +10,3 @@ export const SEGMENT_PENALTY = 50; // strongly discourage extra bends (prefer st
 // horizontal stub prepended/appended to the route so the path always exits the dot horizontally.
 export const ROUTER_PAD = 34;
 
-// Resolved against the <base> the server injects, so a mounted studio loads the
-// WASM from under its own prefix.
-export const wasmURL = () => new URL("assets/libavoid.wasm", document.baseURI).href;

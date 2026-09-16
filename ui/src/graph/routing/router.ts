@@ -19,7 +19,8 @@
 import { AvoidLib } from "libavoid-js";
 import type { Pt, Rect } from "../model/handles";
 import { HANDLE_GAP } from "../model/handles";
-import { SHAPE_BUFFER, IDEAL_NUDGE, SEGMENT_PENALTY, wasmURL, ROUTER_PAD } from "./libavoidConfig";
+import wasmURL from "libavoid-wasm?url";
+import { SHAPE_BUFFER, IDEAL_NUDGE, SEGMENT_PENALTY, ROUTER_PAD } from "./libavoidConfig";
 
 export interface RouterEdge {
   id: string;
@@ -30,7 +31,7 @@ export interface RouterEdge {
 
 let _init: Promise<void> | null = null;
 export function initRouter(): Promise<void> {
-  if (!_init) _init = AvoidLib.load(wasmURL());
+  if (!_init) _init = AvoidLib.load(wasmURL);
   return _init;
 }
 
