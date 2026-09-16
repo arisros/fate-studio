@@ -1,0 +1,177 @@
+{
+  "id": "order",
+  "initial": "order",
+  "context": {
+    "updates": 0
+  },
+  "states": {
+    "order": {
+      "type": "parallel",
+      "states": {
+        "fulfillment": {
+          "type": "compound",
+          "initial": "picking",
+          "states": {
+            "delivered": {
+              "type": "final"
+            },
+            "packing": {
+              "type": "atomic",
+              "on": {
+                "PACKED": [
+                  {
+                    "target": "shipped"
+                  }
+                ],
+                "STATUS_UPDATE": [
+                  {
+                    "internal": true,
+                    "actions": [
+                      "countUpdate"
+                    ]
+                  }
+                ]
+              }
+            },
+            "picking": {
+              "type": "atomic",
+              "on": {
+                "PICKED": [
+                  {
+                    "target": "packing"
+                  }
+                ]
+              }
+            },
+            "shipped": {
+              "type": "atomic",
+              "on": {
+                "DELIVERED": [
+                  {
+                    "target": "delivered"
+                  }
+                ]
+              }
+            }
+          },
+          "ui_state_schema": {
+            "properties": {
+              "lane": {
+                "type": "string"
+              },
+              "updates": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "lane",
+              "updates"
+            ],
+            "type": "object"
+          }
+        },
+        "payment": {
+          "type": "compound",
+          "initial": "pending",
+          "states": {
+            "authorized": {
+              "type": "atomic",
+              "on": {
+                "CAPTURE": [
+                  {
+                    "target": "captured"
+                  }
+                ],
+                "STATUS_UPDATE": [
+                  {
+                    "internal": true,
+                    "actions": [
+                      "countUpdate"
+                    ]
+                  }
+                ]
+              }
+            },
+            "captured": {
+              "type": "final"
+            },
+            "declined": {
+              "type": "atomic",
+              "on": {
+                "RETRY": [
+                  {
+                    "target": "pending"
+                  }
+                ]
+              }
+            },
+            "pending": {
+              "type": "atomic",
+              "on": {
+                "AUTHORIZE": [
+                  {
+                    "target": "authorized"
+                  }
+                ],
+                "CANCEL": [
+                  {
+                    "target": "voided"
+                  }
+                ],
+                "DECLINE": [
+                  {
+                    "target": "declined"
+                  }
+                ]
+              }
+            },
+            "voided": {
+              "type": "final"
+            }
+          },
+          "ui_state_schema": {
+            "properties": {
+              "lane": {
+                "type": "string"
+              },
+              "updates": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "lane",
+              "updates"
+            ],
+            "type": "object"
+          }
+        },
+        "support": {
+          "type": "compound",
+          "initial": "idle",
+          "states": {
+            "idle": {
+              "type": "atomic",
+              "on": {
+                "OPEN_TICKET": [
+                  {
+                    "target": "open"
+                  }
+                ]
+              }
+            },
+            "open": {
+              "type": "atomic",
+              "on": {
+                "RESOLVE": [
+                  {
+                    "target": "idle"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

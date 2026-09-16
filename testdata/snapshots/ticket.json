@@ -1,0 +1,213 @@
+{
+  "id": "ticket",
+  "initial": "new",
+  "context": {
+    "category": "",
+    "approvals": 0
+  },
+  "states": {
+    "billing": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      }
+    },
+    "cancelled": {
+      "type": "final"
+    },
+    "closed": {
+      "type": "final"
+    },
+    "general": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      }
+    },
+    "in_progress": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "review"
+          }
+        ]
+      }
+    },
+    "new": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "MARK_BILLING": [
+          {
+            "internal": true,
+            "actions": [
+              "setCategory"
+            ]
+          }
+        ],
+        "MARK_TECHNICAL": [
+          {
+            "internal": true,
+            "actions": [
+              "setCategory"
+            ]
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "triaged"
+          }
+        ]
+      }
+    },
+    "review": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "closed",
+            "guard": "approved",
+            "cond_meta": {
+              "fields": [
+                {
+                  "path": "$.approvals",
+                  "op": "gte",
+                  "value": 1,
+                  "label": "already approved once"
+                }
+              ],
+              "sample": {
+                "approvals": 1
+              }
+            }
+          },
+          {
+            "internal": true,
+            "actions": [
+              "recordApproval"
+            ]
+          }
+        ],
+        "REOPEN": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      },
+      "ui_state_schema": {
+        "properties": {
+          "approvals": {
+            "type": "integer"
+          },
+          "needed": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approvals",
+          "needed",
+          "ready"
+        ],
+        "type": "object"
+      }
+    },
+    "technical": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      }
+    },
+    "triaged": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "ROUTE": [
+          {
+            "target": "billing",
+            "guard": "is_billing",
+            "cond_meta": {
+              "fields": [
+                {
+                  "path": "$.category",
+                  "op": "eq",
+                  "value": "billing"
+                }
+              ],
+              "sample": {
+                "category": "billing"
+              }
+            }
+          },
+          {
+            "target": "technical",
+            "guard": "is_technical",
+            "cond_meta": {
+              "fields": [
+                {
+                  "path": "$.category",
+                  "op": "eq",
+                  "value": "technical"
+                }
+              ],
+              "sample": {
+                "category": "technical"
+              }
+            }
+          },
+          {
+            "target": "general"
+          }
+        ]
+      }
+    }
+  }
+}

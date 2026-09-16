@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -29,29 +31,42 @@ type session struct {
 
 	mu       sync.Mutex
 	live     LiveInstance
-	subs     []chan LiveSnapshot
+	subs     []chan simFrame
 	history  [][]byte // snapshot bytes captured *before* each applied event
 	events   []string // event names, parallel to history
 	lastSeen time.Time
+}
+
+// simFrame is the single payload every simulator response carries — the SSE
+// stream and the POST endpoints alike. It is the actor snapshot plus the
+// session-level timeline, so a client never has to reconstruct session state
+// it cannot see (a reloaded page used to show an empty timeline while the
+// server still held the full history).
+type simFrame struct {
+	LiveSnapshot
+	Timeline []string `json:"timeline"`
+}
+
+// frameLocked builds the frame for the current state. The mutex must be held,
+// which is what makes "apply then publish" atomic: two concurrent requests can
+// no longer interleave such that the older snapshot is the one delivered last.
+func (s *session) frameLocked() simFrame {
+	tl := make([]string, len(s.events))
+	copy(tl, s.events)
+	return simFrame{LiveSnapshot: s.live.Snapshot(), Timeline: tl}
+}
+
+// frame returns the current frame under lock.
+func (s *session) frame() simFrame {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.frameLocked()
 }
 
 func (s *session) touch() {
 	s.mu.Lock()
 	s.lastSeen = time.Now()
 	s.mu.Unlock()
-}
-
-// snapshot returns the current LiveSnapshot under lock.
-func (s *session) snapshot() LiveSnapshot {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.live.Snapshot()
-}
-
-func (s *session) availableEvents() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.live.AvailableEvents()
 }
 
 // applyEvent pushes the pre-event snapshot to history, then dispatches. On
@@ -75,6 +90,7 @@ func (s *session) applyEvent(ctx context.Context, ev string) error {
 		}
 		return err
 	}
+	s.broadcastLocked()
 	return nil
 }
 
@@ -100,6 +116,7 @@ func (s *session) applyEffect(label string, fn func() error) error {
 		}
 		return err
 	}
+	s.broadcastLocked()
 	return nil
 }
 
@@ -126,7 +143,11 @@ func (s *session) undo() (bool, error) {
 	snap := s.history[len(s.history)-1]
 	s.history = s.history[:len(s.history)-1]
 	s.events = s.events[:len(s.events)-1]
-	return true, s.live.Restore(snap)
+	if err := s.live.Restore(snap); err != nil {
+		return true, err
+	}
+	s.broadcastLocked()
+	return true, nil
 }
 
 // reset rebuilds a fresh actor in place (keeping SSE subscribers attached) and
@@ -141,6 +162,7 @@ func (s *session) reset() error {
 	s.live = live
 	s.history = nil
 	s.events = nil
+	s.broadcastLocked()
 	return nil
 }
 
@@ -153,6 +175,7 @@ func (s *session) importSnapshot(b []byte) error {
 	}
 	s.history = nil
 	s.events = nil
+	s.broadcastLocked()
 	return nil
 }
 
@@ -170,24 +193,34 @@ func (s *session) persist() ([]byte, error) {
 	return s.live.Persist()
 }
 
-func (s *session) broadcast() {
-	snap := s.snapshot()
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// broadcastLocked publishes the current frame to every subscriber. The mutex
+// must be held, so a subscriber receives exactly the state the mutation
+// produced. Each subscriber holds only the latest frame: an unread older frame
+// is replaced, so a slow client skips ahead instead of stalling the session or
+// ending on a stale state.
+func (s *session) broadcastLocked() {
+	frame := s.frameLocked()
 	for _, ch := range s.subs {
 		select {
-		case ch <- snap:
+		case <-ch:
+		default:
+		}
+		select {
+		case ch <- frame:
 		default:
 		}
 	}
 }
 
-func (s *session) subscribe() (chan LiveSnapshot, func()) {
-	ch := make(chan LiveSnapshot, 4)
+// subscribe registers a subscriber and returns the current frame taken under
+// the same lock, so no mutation can fall between the two.
+func (s *session) subscribe() (chan simFrame, simFrame, func()) {
+	ch := make(chan simFrame, 1)
 	s.mu.Lock()
 	s.subs = append(s.subs, ch)
+	initial := s.frameLocked()
 	s.mu.Unlock()
-	return ch, func() {
+	return ch, initial, func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		for i, c := range s.subs {
@@ -257,7 +290,9 @@ const sessionCookie = "fate_sid"
 
 // tokenFor reads the session token from the cookie, minting + setting one when
 // absent. Per-browser isolation: each token gets its own actor per machine.
-func tokenFor(w http.ResponseWriter, r *http.Request) string {
+// The cookie is scoped to basePath so a mounted studio does not put its cookie
+// on every request the surrounding site makes.
+func tokenFor(w http.ResponseWriter, r *http.Request, basePath string) string {
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 		return c.Value
 	}
@@ -265,8 +300,11 @@ func tokenFor(w http.ResponseWriter, r *http.Request) string {
 	_, _ = rand.Read(b)
 	tok := hex.EncodeToString(b)
 	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: tok, Path: "/",
+		Name: sessionCookie, Value: tok, Path: basePath,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		// Set only over TLS: a Secure cookie on a plain-HTTP dev server would
+		// never be stored, breaking the local `go run ./cmd/fate-studio` flow.
+		Secure: r.TLS != nil,
 	})
 	return tok
 }
@@ -285,6 +323,31 @@ func (s *Server) handleSimRoute(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 {
 		sub = parts[1]
 	}
+
+	// ProxyURL: forward all sub-routes to the remote fate httphandler. The
+	// cookie is forwarded transparently so the remote session model is preserved.
+	if entry, ok := s.lookup(name); ok && entry.ProxyURL != "" && sub != "" {
+		base, err := url.Parse(entry.ProxyURL)
+		if err != nil {
+			http.Error(w, "bad proxy URL: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		proxy := httputil.NewSingleHostReverseProxy(base)
+		proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
+			http.Error(w, fmt.Sprintf("simulator for %q is unreachable: %v", name, err), http.StatusBadGateway)
+		}
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			scopeCookies(resp, s.basePath)
+			return nil
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/" + sub
+		r2.URL.RawPath = ""
+		r2.Host = base.Host
+		proxy.ServeHTTP(w, r2)
+		return
+	}
+
 	switch sub {
 	case "":
 		s.handleSimPage(w, r, name)
@@ -318,22 +381,15 @@ func (s *Server) sessionFor(w http.ResponseWriter, r *http.Request, name string)
 	if !ok {
 		return nil, fmt.Errorf("unknown machine %q", name)
 	}
-	token := tokenFor(w, r)
+	token := tokenFor(w, r, s.basePath)
 	return s.sessions.getOrCreate(name+"|"+token, entry.BuildLive)
 }
 
-// snapResponse is the JSON shape returned by send/reset/undo/import.
-type snapResponse struct {
-	LiveSnapshot
-	Events []string `json:"events"`
-}
-
+// writeSnapResponse returns the current frame — the same shape the SSE stream
+// pushes, so a client has one contract to parse rather than two.
 func writeSnapResponse(w http.ResponseWriter, sess *session) {
 	w.Header().Set("content-type", "application/json")
-	_ = json.NewEncoder(w).Encode(snapResponse{
-		LiveSnapshot: sess.snapshot(),
-		Events:       sess.availableEvents(),
-	})
+	_ = json.NewEncoder(w).Encode(sess.frame())
 }
 
 // handleSimPage serves the SPA shell for /sim/{name}. The session cookie is
@@ -353,11 +409,11 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 	w.Header().Set("cache-control", "no-cache")
 	w.Header().Set("connection", "keep-alive")
 
-	if err := writeSSE(w, sess.snapshot()); err != nil {
+	ch, initial, unsub := sess.subscribe()
+	defer unsub()
+	if err := writeSSE(w, initial); err != nil {
 		return
 	}
-	ch, unsub := sess.subscribe()
-	defer unsub()
 
 	ctx := r.Context()
 	keepalive := time.NewTicker(25 * time.Second)
@@ -385,8 +441,8 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 	}
 }
 
-func writeSSE(w io.Writer, snap LiveSnapshot) error {
-	b, err := json.Marshal(snap)
+func writeSSE(w io.Writer, frame simFrame) error {
+	b, err := json.Marshal(frame)
 	if err != nil {
 		return err
 	}
@@ -419,7 +475,6 @@ func (s *Server) handleSimSend(w http.ResponseWriter, r *http.Request, name stri
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -443,7 +498,6 @@ func (s *Server) handleSimTimer(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -472,7 +526,6 @@ func (s *Server) handleSimInvoke(w http.ResponseWriter, r *http.Request, name st
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -490,7 +543,6 @@ func (s *Server) handleSimReset(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -513,7 +565,6 @@ func (s *Server) handleSimUndo(w http.ResponseWriter, r *http.Request, name stri
 		http.Error(w, "nothing to undo", http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -536,7 +587,6 @@ func (s *Server) handleSimImport(w http.ResponseWriter, r *http.Request, name st
 		http.Error(w, "import: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.broadcast()
 	writeSnapResponse(w, sess)
 }
 
@@ -564,4 +614,18 @@ func (s *Server) handleSimExport(w http.ResponseWriter, r *http.Request, name st
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("content-disposition", fmt.Sprintf(`attachment; filename="%s-snapshot.json"`, name))
 	_, _ = w.Write(b)
+}
+
+// scopeCookies narrows cookies set by a proxied simulator to the studio's
+// mount prefix, so a mounted studio does not set them on the whole site.
+func scopeCookies(resp *http.Response, basePath string) {
+	cookies := resp.Cookies()
+	if len(cookies) == 0 {
+		return
+	}
+	resp.Header.Del("Set-Cookie")
+	for _, c := range cookies {
+		c.Path = basePath
+		resp.Header.Add("Set-Cookie", c.String())
+	}
 }

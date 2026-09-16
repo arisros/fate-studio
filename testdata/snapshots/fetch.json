@@ -1,0 +1,35 @@
+{
+  "id": "fetch",
+  "initial": "loading",
+  "context": {},
+  "states": {
+    "error": {
+      "type": "atomic",
+      "on": {
+        "RETRY": [
+          {
+            "target": "loading"
+          }
+        ]
+      }
+    },
+    "loading": {
+      "type": "atomic",
+      "on": {
+        "FAILED": [
+          {
+            "target": "error"
+          }
+        ],
+        "FETCHED": [
+          {
+            "target": "ready"
+          }
+        ]
+      }
+    },
+    "ready": {
+      "type": "final"
+    }
+  }
+}
