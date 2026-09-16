@@ -11,12 +11,15 @@ import (
 )
 
 // Entry is one registered machine. Build returns the static descriptor;
-// BuildLive (optional) returns a fresh live actor for the simulator.
+// BuildLive (optional) returns a fresh live actor for the simulator;
+// ProxyURL (optional) forwards /sim/{name}/* to a remote fate httphandler.
+// ProxyURL takes precedence over BuildLive when both are set.
 type Entry struct {
 	Name      string
 	Summary   string
 	Build     func() sc.MachineDescriptor
-	BuildLive func() LiveInstance // nil = static-only, no simulator
+	BuildLive func() LiveInstance // nil = static-only, no local simulator
+	ProxyURL  string              // remote fate httphandler base URL
 }
 
 // Server is an embeddable statechart studio. Construct with NewServer,
@@ -28,11 +31,18 @@ type Entry struct {
 type Server struct {
 	title    string
 	basePath string
-	entries  []Entry
 
-	// live sessions keyed by machine name + session token, so two browsers
-	// drive independent actors of the same machine.
+	// entries is guarded by mu: Register and the snapshot hot-reloader mutate it
+	// while request handlers read it concurrently.
+	mu      sync.RWMutex
+	entries []Entry
+
+	// live sessions keyed by machine name (one shared session per machine).
 	sessions *sessionStore
+
+	// events broadcasts server-global SSE messages (e.g. graph-changed on
+	// snapshot hot-reload) to the browser.
+	events *eventHub
 
 	shellOnce sync.Once
 	shell     []byte
@@ -44,7 +54,7 @@ func NewServer(title string) *Server {
 	if title == "" {
 		title = "fate studio"
 	}
-	return &Server{title: title, basePath: "/", sessions: newSessionStore()}
+	return &Server{title: title, basePath: "/", sessions: newSessionStore(), events: newEventHub()}
 }
 
 // SetBasePath declares the URL prefix the studio is mounted at, so an embedded
@@ -53,17 +63,14 @@ func NewServer(title string) *Server {
 //	srv.SetBasePath("/studio/")
 //	http.Handle("/studio/", http.StripPrefix("/studio", srv.Handler()))
 //
-// The SPA loads its bundle and calls its API relative to this prefix. Without
-// it a mounted studio would request /assets/... and /api/... at the site root
-// and serve a blank page. Call it before serving; the page shell is built once
-// on the first request. Returns the server for chaining.
+// The SPA loads its bundle and calls its API relative to this prefix. Call it
+// before serving; the page shell is built once on the first request.
 func (s *Server) SetBasePath(p string) *Server {
 	s.basePath = normalizeBasePath(p)
 	return s
 }
 
-// normalizeBasePath returns p as a prefix with exactly one leading and one
-// trailing slash ("studio" and "/studio" both become "/studio/").
+// normalizeBasePath returns p with exactly one leading and trailing slash.
 func normalizeBasePath(p string) string {
 	p = strings.Trim(p, "/")
 	if p == "" {
@@ -75,11 +82,30 @@ func normalizeBasePath(p string) string {
 // Register adds a machine. build is required (static view); buildLive is
 // optional (interactive simulator). Returns the server for chaining.
 func (s *Server) Register(e Entry) *Server {
+	s.mu.Lock()
 	s.entries = append(s.entries, e)
+	s.mu.Unlock()
 	return s
 }
 
+// replaceEntry inserts e, replacing any existing entry with the same name (used
+// by the snapshot hot-reloader). Returns true if an existing entry was updated.
+func (s *Server) replaceEntry(e Entry) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.entries {
+		if s.entries[i].Name == e.Name {
+			s.entries[i] = e
+			return true
+		}
+	}
+	s.entries = append(s.entries, e)
+	return false
+}
+
 func (s *Server) lookup(name string) (Entry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, e := range s.entries {
 		if e.Name == name {
 			return e, true
@@ -88,10 +114,50 @@ func (s *Server) lookup(name string) (Entry, bool) {
 	return Entry{}, false
 }
 
+// Machines returns the names of all registered machines. Useful for iterating
+// over all entries to apply configuration (e.g. reading proxy env vars).
+func (s *Server) Machines() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.entries))
+	for _, e := range s.entries {
+		names = append(names, e.Name)
+	}
+	return names
+}
+
+// SetProxyURL updates the ProxyURL for a registered machine. It is a no-op if
+// url is empty or the machine name is not registered. Call after LoadSnapshots
+// to configure live simulation via a remote fate httphandler.
+func (s *Server) SetProxyURL(name, url string) {
+	if url == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.entries {
+		if s.entries[i].Name == name {
+			s.entries[i].ProxyURL = url
+			return
+		}
+	}
+}
+
+// entryList returns a snapshot copy of the registered entries under the read
+// lock — safe to range over without holding the lock.
+func (s *Server) entryList() []Entry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Entry, len(s.entries))
+	copy(out, s.entries)
+	return out
+}
+
 // Handler returns an http.Handler with all studio routes mounted.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/machines", s.handleAPIMachines)
+	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/m/", s.handleMachine)
 	mux.HandleFunc("/sim/", s.handleSimRoute)
 	mux.HandleFunc("/assets/", s.handleAssets)
