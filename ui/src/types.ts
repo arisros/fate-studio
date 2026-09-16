@@ -1,7 +1,7 @@
 // Mirrors the Go backend contracts:
 //   Graph/GraphNode/GraphEdge  -> vendor/github.com/arisros/fate/graph.go
 //   LiveSnapshot/Timer/Invoke  -> live.go
-//   snapResponse               -> simulator.go
+//   SimFrame                   -> simulator.go
 //   /api/machines              -> server.go (new endpoint)
 
 export type NodeType =
@@ -10,6 +10,22 @@ export type NodeType =
   | "parallel"
   | "final"
   | "history";
+
+// CondField describes one predicate that a Guard checks on the actor context.
+// Mirrors vendor/github.com/arisros/fate/cond_meta.go.
+export interface CondField {
+  path: string; // "$.score" or "$.customer.name"
+  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "truthy" | "falsy";
+  value?: unknown;
+  label?: string; // human display override
+}
+
+// CondMeta is informational metadata about what a transition Guard checks.
+// Displayed as a live Gate panel in the studio inspector.
+export interface CondMeta {
+  fields?: CondField[];
+  sample?: unknown; // example context object that passes the guard
+}
 
 export interface GraphNode {
   id: string; // qualified node id
@@ -21,6 +37,7 @@ export interface GraphNode {
   history?: "shallow" | "deep";
   entry?: string[];
   exit?: string[];
+  uiStateSchema?: Record<string, unknown>; // JSON Schema for UIState return type
 }
 
 export interface GraphEdge {
@@ -31,6 +48,7 @@ export interface GraphEdge {
   guard?: string;
   actions?: string[];
   internal?: boolean;
+  condMeta?: CondMeta; // gate metadata for the studio inspector
 }
 
 export interface Graph {
@@ -55,22 +73,16 @@ export interface LiveSnapshot {
   context: unknown; // raw JSON
   status: string; // "running" | "stopped" | "done" | "error"
   ascii: string;
-  // Event names sendable from the active configuration, resolved server-side.
-  // The server walks each active leaf up through its ancestors the way the
-  // engine does; deriving this from the graph client-side missed every event
-  // declared on a compound parent and offered non-events like "onDone".
-  events: string[];
+  uiState?: unknown; // per-state payload from Go StateNodeConfig.UIState callback
+  events: string[]; // sendable from the active configuration, resolved server-side
   timers?: TimerInfo[];
   invocations?: InvokeInfo[];
 }
 
-// SimFrame is what both the SSE stream and the POST endpoints return: the
-// actor snapshot plus session state the client cannot derive on its own.
+// SimFrame is what the SSE stream and the POST endpoints both return.
 export interface SimFrame extends LiveSnapshot {
   timeline: string[]; // steps applied in this session, oldest first
 }
-
-export type SnapResponse = SimFrame;
 
 export interface MachineInfo {
   name: string;

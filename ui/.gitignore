@@ -1,0 +1,5 @@
+# Playwright visual-QA artifacts
+e2e/__screens__/
+e2e/__report__/
+test-results/
+playwright-report/
