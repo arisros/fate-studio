@@ -194,13 +194,17 @@ func (s *session) persist() ([]byte, error) {
 }
 
 // broadcastLocked publishes the current frame to every subscriber. The mutex
-// must be held — callers are the mutating methods themselves, so the state a
-// subscriber receives is exactly the state the mutation produced. Sends are
-// non-blocking: a subscriber that has fallen behind drops the frame rather
-// than stalling the session.
+// must be held, so a subscriber receives exactly the state the mutation
+// produced. Each subscriber holds only the latest frame: an unread older frame
+// is replaced, so a slow client skips ahead instead of stalling the session or
+// ending on a stale state.
 func (s *session) broadcastLocked() {
 	frame := s.frameLocked()
 	for _, ch := range s.subs {
+		select {
+		case <-ch:
+		default:
+		}
 		select {
 		case ch <- frame:
 		default:
@@ -208,12 +212,15 @@ func (s *session) broadcastLocked() {
 	}
 }
 
-func (s *session) subscribe() (chan simFrame, func()) {
-	ch := make(chan simFrame, 4)
+// subscribe registers a subscriber and returns the current frame taken under
+// the same lock, so no mutation can fall between the two.
+func (s *session) subscribe() (chan simFrame, simFrame, func()) {
+	ch := make(chan simFrame, 1)
 	s.mu.Lock()
 	s.subs = append(s.subs, ch)
+	initial := s.frameLocked()
 	s.mu.Unlock()
-	return ch, func() {
+	return ch, initial, func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		for i, c := range s.subs {
@@ -326,6 +333,13 @@ func (s *Server) handleSimRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		proxy := httputil.NewSingleHostReverseProxy(base)
+		proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
+			http.Error(w, fmt.Sprintf("simulator for %q is unreachable: %v", name, err), http.StatusBadGateway)
+		}
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			scopeCookies(resp, s.basePath)
+			return nil
+		}
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/" + sub
 		r2.URL.RawPath = ""
@@ -395,11 +409,11 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 	w.Header().Set("cache-control", "no-cache")
 	w.Header().Set("connection", "keep-alive")
 
-	if err := writeSSE(w, sess.frame()); err != nil {
+	ch, initial, unsub := sess.subscribe()
+	defer unsub()
+	if err := writeSSE(w, initial); err != nil {
 		return
 	}
-	ch, unsub := sess.subscribe()
-	defer unsub()
 
 	ctx := r.Context()
 	keepalive := time.NewTicker(25 * time.Second)
@@ -600,4 +614,18 @@ func (s *Server) handleSimExport(w http.ResponseWriter, r *http.Request, name st
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("content-disposition", fmt.Sprintf(`attachment; filename="%s-snapshot.json"`, name))
 	_, _ = w.Write(b)
+}
+
+// scopeCookies narrows cookies set by a proxied simulator to the studio's
+// mount prefix, so a mounted studio does not set them on the whole site.
+func scopeCookies(resp *http.Response, basePath string) {
+	cookies := resp.Cookies()
+	if len(cookies) == 0 {
+		return
+	}
+	resp.Header.Del("Set-Cookie")
+	for _, c := range cookies {
+		c.Path = basePath
+		resp.Header.Add("Set-Cookie", c.String())
+	}
 }
