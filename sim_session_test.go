@@ -1,6 +1,7 @@
 package studio_test
 
 import (
+	"bufio"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	sc "github.com/arisros/fate"
 )
@@ -293,6 +295,24 @@ func TestSim_ConcurrentSendsPublishFinalState(t *testing.T) {
 		t.Fatalf("stream: %v", err)
 	}
 	defer resp.Body.Close()
+	frames := make(chan int, 64)
+	go func() {
+		sc := bufio.NewScanner(resp.Body)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			data, ok := strings.CutPrefix(sc.Text(), "data: ")
+			if !ok {
+				continue
+			}
+			var f struct {
+				Timeline []string `json:"timeline"`
+			}
+			if json.Unmarshal([]byte(data), &f) == nil {
+				frames <- len(f.Timeline)
+			}
+		}
+		close(frames)
+	}()
 
 	const n = 12
 	var wg sync.WaitGroup
@@ -305,7 +325,23 @@ func TestSim_ConcurrentSendsPublishFinalState(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Every send must be recorded exactly once, with no lost or doubled step.
+	// The stream must end on the final state, not a frame produced earlier.
+	deadline := time.After(5 * time.Second)
+	for last := -1; last != n+1; {
+		select {
+		case l, ok := <-frames:
+			if !ok {
+				t.Fatalf("stream closed; last timeline length %d", last)
+			}
+			if l < last {
+				t.Fatalf("frame went backwards: %d after %d", l, last)
+			}
+			last = l
+		case <-deadline:
+			t.Fatalf("never received the final frame (timeline %d); last seen %d", n+1, last)
+		}
+	}
+
 	r2, _ := c.Get(base + "/sim/traffic-light/timeline")
 	tb, _ := io.ReadAll(r2.Body)
 	r2.Body.Close()

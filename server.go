@@ -2,6 +2,7 @@ package studio
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -88,19 +89,28 @@ func (s *Server) Register(e Entry) *Server {
 	return s
 }
 
-// replaceEntry inserts e, replacing any existing entry with the same name (used
-// by the snapshot hot-reloader). Returns true if an existing entry was updated.
-func (s *Server) replaceEntry(e Entry) bool {
+// replaceEntry inserts a snapshot entry, or updates the existing entry of the
+// same name while keeping its ProxyURL. It refuses to replace an entry with a
+// live simulator, so a snapshot cannot shadow a registered machine.
+func (s *Server) replaceEntry(e Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.entries {
-		if s.entries[i].Name == e.Name {
-			s.entries[i] = e
-			return true
+		cur := &s.entries[i]
+		if cur.Name != e.Name {
+			continue
 		}
+		if cur.BuildLive != nil {
+			return fmt.Errorf("%q is already registered with a live simulator", e.Name)
+		}
+		if e.ProxyURL == "" {
+			e.ProxyURL = cur.ProxyURL
+		}
+		*cur = e
+		return nil
 	}
 	s.entries = append(s.entries, e)
-	return false
+	return nil
 }
 
 func (s *Server) lookup(name string) (Entry, bool) {
@@ -126,21 +136,19 @@ func (s *Server) Machines() []string {
 	return names
 }
 
-// SetProxyURL updates the ProxyURL for a registered machine. It is a no-op if
-// url is empty or the machine name is not registered. Call after LoadSnapshots
-// to configure live simulation via a remote fate httphandler.
-func (s *Server) SetProxyURL(name, url string) {
-	if url == "" {
-		return
-	}
+// SetProxyURL points a registered machine's simulator at a remote fate
+// httphandler. Call it after LoadSnapshots. It reports false when no machine
+// has that name.
+func (s *Server) SetProxyURL(name, url string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.entries {
 		if s.entries[i].Name == name {
 			s.entries[i].ProxyURL = url
-			return
+			return true
 		}
 	}
+	return false
 }
 
 // entryList returns a snapshot copy of the registered entries under the read

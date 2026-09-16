@@ -53,11 +53,12 @@ func (s *Server) loadSnapshotFile(path string) error {
 	}
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	summary := "Snapshot of " + d.ID
-	s.replaceEntry(Entry{
+	if err := s.replaceEntry(Entry{
 		Name:    name,
 		Summary: summary,
 		Build:   func() sc.MachineDescriptor { return d },
-		// BuildLive nil → static-only; the simulator is unavailable for snapshots.
-	})
+	}); err != nil {
+		return fmt.Errorf("skip %s: %w", filepath.Base(path), err)
+	}
 	return nil
 }
