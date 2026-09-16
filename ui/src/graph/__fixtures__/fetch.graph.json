@@ -1,0 +1,50 @@
+{
+  "id": "fetch",
+  "initial": "s_loading",
+  "nodes": [
+    {
+      "id": "s_error",
+      "label": "error",
+      "path": "error",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_loading",
+      "label": "loading",
+      "path": "loading",
+      "type": "atomic",
+      "parent": "",
+      "initial": true
+    },
+    {
+      "id": "s_ready",
+      "label": "ready",
+      "path": "ready",
+      "type": "final",
+      "parent": "",
+      "initial": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_error__RETRY__1",
+      "source": "s_error",
+      "event": "RETRY",
+      "target": "s_loading"
+    },
+    {
+      "id": "s_loading__FAILED__1",
+      "source": "s_loading",
+      "event": "FAILED",
+      "target": "s_error"
+    },
+    {
+      "id": "s_loading__FETCHED__2",
+      "source": "s_loading",
+      "event": "FETCHED",
+      "target": "s_ready"
+    }
+  ]
+}

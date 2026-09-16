@@ -1,0 +1,43 @@
+{
+  "id": "counter",
+  "initial": "s_active",
+  "nodes": [
+    {
+      "id": "s_active",
+      "label": "active",
+      "path": "active",
+      "type": "atomic",
+      "parent": "",
+      "initial": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_active__DEC__1",
+      "source": "s_active",
+      "event": "DEC",
+      "target": "s_active",
+      "actions": [
+        ""
+      ]
+    },
+    {
+      "id": "s_active__INC__2",
+      "source": "s_active",
+      "event": "INC",
+      "target": "s_active",
+      "actions": [
+        ""
+      ]
+    },
+    {
+      "id": "s_active__RESET__3",
+      "source": "s_active",
+      "event": "RESET",
+      "target": "s_active",
+      "actions": [
+        ""
+      ]
+    }
+  ]
+}
