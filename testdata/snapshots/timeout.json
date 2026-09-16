@@ -1,0 +1,20 @@
+{
+  "id": "timeout",
+  "initial": "waiting",
+  "context": {},
+  "states": {
+    "expired": {
+      "type": "final"
+    },
+    "waiting": {
+      "type": "atomic",
+      "on": {
+        "RESTART": [
+          {
+            "target": "waiting"
+          }
+        ]
+      }
+    }
+  }
+}

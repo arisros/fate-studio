@@ -1,0 +1,238 @@
+{
+  "id": "order",
+  "initial": "s_order",
+  "nodes": [
+    {
+      "id": "s_order",
+      "label": "order",
+      "path": "order",
+      "type": "parallel",
+      "parent": "",
+      "initial": true
+    },
+    {
+      "id": "s_order_fulfillment",
+      "label": "fulfillment",
+      "path": "order.fulfillment",
+      "type": "compound",
+      "parent": "s_order",
+      "initial": false,
+      "ui_state_schema": {
+        "properties": {
+          "lane": {
+            "type": "string"
+          },
+          "updates": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lane",
+          "updates"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "s_order_fulfillment_delivered",
+      "label": "delivered",
+      "path": "order.fulfillment.delivered",
+      "type": "final",
+      "parent": "s_order_fulfillment",
+      "initial": false
+    },
+    {
+      "id": "s_order_fulfillment_packing",
+      "label": "packing",
+      "path": "order.fulfillment.packing",
+      "type": "atomic",
+      "parent": "s_order_fulfillment",
+      "initial": false
+    },
+    {
+      "id": "s_order_fulfillment_picking",
+      "label": "picking",
+      "path": "order.fulfillment.picking",
+      "type": "atomic",
+      "parent": "s_order_fulfillment",
+      "initial": true
+    },
+    {
+      "id": "s_order_fulfillment_shipped",
+      "label": "shipped",
+      "path": "order.fulfillment.shipped",
+      "type": "atomic",
+      "parent": "s_order_fulfillment",
+      "initial": false
+    },
+    {
+      "id": "s_order_payment",
+      "label": "payment",
+      "path": "order.payment",
+      "type": "compound",
+      "parent": "s_order",
+      "initial": false,
+      "ui_state_schema": {
+        "properties": {
+          "lane": {
+            "type": "string"
+          },
+          "updates": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lane",
+          "updates"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "s_order_payment_authorized",
+      "label": "authorized",
+      "path": "order.payment.authorized",
+      "type": "atomic",
+      "parent": "s_order_payment",
+      "initial": false
+    },
+    {
+      "id": "s_order_payment_captured",
+      "label": "captured",
+      "path": "order.payment.captured",
+      "type": "final",
+      "parent": "s_order_payment",
+      "initial": false
+    },
+    {
+      "id": "s_order_payment_declined",
+      "label": "declined",
+      "path": "order.payment.declined",
+      "type": "atomic",
+      "parent": "s_order_payment",
+      "initial": false
+    },
+    {
+      "id": "s_order_payment_pending",
+      "label": "pending",
+      "path": "order.payment.pending",
+      "type": "atomic",
+      "parent": "s_order_payment",
+      "initial": true
+    },
+    {
+      "id": "s_order_payment_voided",
+      "label": "voided",
+      "path": "order.payment.voided",
+      "type": "final",
+      "parent": "s_order_payment",
+      "initial": false
+    },
+    {
+      "id": "s_order_support",
+      "label": "support",
+      "path": "order.support",
+      "type": "compound",
+      "parent": "s_order",
+      "initial": false
+    },
+    {
+      "id": "s_order_support_idle",
+      "label": "idle",
+      "path": "order.support.idle",
+      "type": "atomic",
+      "parent": "s_order_support",
+      "initial": true
+    },
+    {
+      "id": "s_order_support_open",
+      "label": "open",
+      "path": "order.support.open",
+      "type": "atomic",
+      "parent": "s_order_support",
+      "initial": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_order_fulfillment_packing__PACKED__1",
+      "source": "s_order_fulfillment_packing",
+      "event": "PACKED",
+      "target": "s_order_fulfillment_shipped"
+    },
+    {
+      "id": "s_order_fulfillment_packing__STATUS_UPDATE__2",
+      "source": "s_order_fulfillment_packing",
+      "event": "STATUS_UPDATE",
+      "target": "s_order_fulfillment_packing",
+      "actions": [
+        "countUpdate"
+      ],
+      "internal": true
+    },
+    {
+      "id": "s_order_fulfillment_picking__PICKED__1",
+      "source": "s_order_fulfillment_picking",
+      "event": "PICKED",
+      "target": "s_order_fulfillment_packing"
+    },
+    {
+      "id": "s_order_fulfillment_shipped__DELIVERED__1",
+      "source": "s_order_fulfillment_shipped",
+      "event": "DELIVERED",
+      "target": "s_order_fulfillment_delivered"
+    },
+    {
+      "id": "s_order_payment_authorized__CAPTURE__1",
+      "source": "s_order_payment_authorized",
+      "event": "CAPTURE",
+      "target": "s_order_payment_captured"
+    },
+    {
+      "id": "s_order_payment_authorized__STATUS_UPDATE__2",
+      "source": "s_order_payment_authorized",
+      "event": "STATUS_UPDATE",
+      "target": "s_order_payment_authorized",
+      "actions": [
+        "countUpdate"
+      ],
+      "internal": true
+    },
+    {
+      "id": "s_order_payment_declined__RETRY__1",
+      "source": "s_order_payment_declined",
+      "event": "RETRY",
+      "target": "s_order_payment_pending"
+    },
+    {
+      "id": "s_order_payment_pending__AUTHORIZE__1",
+      "source": "s_order_payment_pending",
+      "event": "AUTHORIZE",
+      "target": "s_order_payment_authorized"
+    },
+    {
+      "id": "s_order_payment_pending__CANCEL__2",
+      "source": "s_order_payment_pending",
+      "event": "CANCEL",
+      "target": "s_order_payment_voided"
+    },
+    {
+      "id": "s_order_payment_pending__DECLINE__3",
+      "source": "s_order_payment_pending",
+      "event": "DECLINE",
+      "target": "s_order_payment_declined"
+    },
+    {
+      "id": "s_order_support_idle__OPEN_TICKET__1",
+      "source": "s_order_support_idle",
+      "event": "OPEN_TICKET",
+      "target": "s_order_support_open"
+    },
+    {
+      "id": "s_order_support_open__RESOLVE__1",
+      "source": "s_order_support_open",
+      "event": "RESOLVE",
+      "target": "s_order_support_idle"
+    }
+  ]
+}

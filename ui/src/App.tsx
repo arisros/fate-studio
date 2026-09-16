@@ -68,6 +68,18 @@ function AppShell({ machines }: { machines: MachineInfo[] }) {
   );
 }
 
+// The router's basename comes from the <base> element the server rewrites, so
+// client-side links carry the mount prefix without the UI hard-coding it.
+function routerBasename(): string {
+  const el = document.querySelector("base");
+  if (!el) return "";
+  try {
+    return new URL(el.href).pathname.replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
 export default function App() {
   const [machines, setMachines] = useState<MachineInfo[]>([]);
 
@@ -76,7 +88,7 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename()}>
       <ToastProvider>
         <AppShell machines={machines} />
       </ToastProvider>

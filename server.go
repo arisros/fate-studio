@@ -2,20 +2,26 @@ package studio
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/render"
 )
 
 // Entry is one registered machine. Build returns the static descriptor;
-// BuildLive (optional) returns a fresh live actor for the simulator.
+// BuildLive (optional) returns a fresh live actor for the simulator;
+// ProxyURL (optional) forwards /sim/{name}/* to a remote fate httphandler.
+// ProxyURL takes precedence over BuildLive when both are set.
 type Entry struct {
 	Name      string
 	Summary   string
 	Build     func() sc.MachineDescriptor
-	BuildLive func() LiveInstance // nil = static-only, no simulator
+	BuildLive func() LiveInstance // nil = static-only, no local simulator
+	ProxyURL  string              // remote fate httphandler base URL
 }
 
 // Server is an embeddable statechart studio. Construct with NewServer,
@@ -25,29 +31,92 @@ type Entry struct {
 // Vite and committed to assets/). The server is a JSON/SSE API + SPA host:
 // machine structure comes from /m/{name}/graph, live state over /sim/{name}/*.
 type Server struct {
-	title   string
+	title    string
+	basePath string
+
+	// entries is guarded by mu: Register and the snapshot hot-reloader mutate it
+	// while request handlers read it concurrently.
+	mu      sync.RWMutex
 	entries []Entry
 
 	// live sessions keyed by machine name (one shared session per machine).
 	sessions *sessionStore
+
+	// events broadcasts server-global SSE messages (e.g. graph-changed on
+	// snapshot hot-reload) to the browser.
+	events *eventHub
+
+	shellOnce sync.Once
+	shell     []byte
 }
 
-// NewServer returns an empty studio. title appears in the page header.
+// NewServer returns an empty studio mounted at "/". title appears in the page
+// header; use SetBasePath to mount it under a prefix.
 func NewServer(title string) *Server {
 	if title == "" {
 		title = "fate studio"
 	}
-	return &Server{title: title, sessions: newSessionStore()}
+	return &Server{title: title, basePath: "/", sessions: newSessionStore(), events: newEventHub()}
+}
+
+// SetBasePath declares the URL prefix the studio is mounted at, so an embedded
+// studio can live somewhere other than the site root:
+//
+//	srv.SetBasePath("/studio/")
+//	http.Handle("/studio/", http.StripPrefix("/studio", srv.Handler()))
+//
+// The SPA loads its bundle and calls its API relative to this prefix. Call it
+// before serving; the page shell is built once on the first request.
+func (s *Server) SetBasePath(p string) *Server {
+	s.basePath = normalizeBasePath(p)
+	return s
+}
+
+// normalizeBasePath returns p with exactly one leading and trailing slash.
+func normalizeBasePath(p string) string {
+	p = strings.Trim(p, "/")
+	if p == "" {
+		return "/"
+	}
+	return "/" + p + "/"
 }
 
 // Register adds a machine. build is required (static view); buildLive is
 // optional (interactive simulator). Returns the server for chaining.
 func (s *Server) Register(e Entry) *Server {
+	s.mu.Lock()
 	s.entries = append(s.entries, e)
+	s.mu.Unlock()
 	return s
 }
 
+// replaceEntry inserts a snapshot entry, or updates the existing entry of the
+// same name while keeping its ProxyURL. It refuses to replace an entry with a
+// live simulator, so a snapshot cannot shadow a registered machine.
+func (s *Server) replaceEntry(e Entry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.entries {
+		cur := &s.entries[i]
+		if cur.Name != e.Name {
+			continue
+		}
+		if cur.BuildLive != nil {
+			return fmt.Errorf("%q is already registered with a live simulator", e.Name)
+		}
+		if e.ProxyURL == "" {
+			e.ProxyURL = cur.ProxyURL
+		}
+		*cur = e
+		return nil
+	}
+	s.entries = append(s.entries, e)
+	return nil
+}
+
 func (s *Server) lookup(name string) (Entry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, e := range s.entries {
 		if e.Name == name {
 			return e, true
@@ -56,10 +125,48 @@ func (s *Server) lookup(name string) (Entry, bool) {
 	return Entry{}, false
 }
 
+// Machines returns the names of all registered machines. Useful for iterating
+// over all entries to apply configuration (e.g. reading proxy env vars).
+func (s *Server) Machines() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.entries))
+	for _, e := range s.entries {
+		names = append(names, e.Name)
+	}
+	return names
+}
+
+// SetProxyURL points a registered machine's simulator at a remote fate
+// httphandler. Call it after LoadSnapshots. It reports false when no machine
+// has that name.
+func (s *Server) SetProxyURL(name, url string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.entries {
+		if s.entries[i].Name == name {
+			s.entries[i].ProxyURL = url
+			return true
+		}
+	}
+	return false
+}
+
+// entryList returns a snapshot copy of the registered entries under the read
+// lock — safe to range over without holding the lock.
+func (s *Server) entryList() []Entry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Entry, len(s.entries))
+	copy(out, s.entries)
+	return out
+}
+
 // Handler returns an http.Handler with all studio routes mounted.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/machines", s.handleAPIMachines)
+	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/m/", s.handleMachine)
 	mux.HandleFunc("/sim/", s.handleSimRoute)
 	mux.HandleFunc("/assets/", s.handleAssets)
@@ -105,7 +212,7 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 		// Resolved node/edge graph for the studio canvas (laid out by elkjs in
 		// the browser). Structure only — active highlight comes from SSE.
 		w.Header().Set("content-type", "application/json")
-		_ = json.NewEncoder(w).Encode(sc.RenderGraphJSON(entry.Build()))
+		_ = json.NewEncoder(w).Encode(render.GraphJSON(entry.Build()))
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "describe" {

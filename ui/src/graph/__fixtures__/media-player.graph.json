@@ -1,0 +1,106 @@
+{
+  "id": "media-player",
+  "initial": "s_playing",
+  "nodes": [
+    {
+      "id": "s_playing",
+      "label": "playing",
+      "path": "playing",
+      "type": "parallel",
+      "parent": "",
+      "initial": true
+    },
+    {
+      "id": "s_playing_audio",
+      "label": "audio",
+      "path": "playing.audio",
+      "type": "compound",
+      "parent": "s_playing",
+      "initial": false
+    },
+    {
+      "id": "s_playing_audio_decoding_audio",
+      "label": "decoding_audio",
+      "path": "playing.audio.decoding_audio",
+      "type": "atomic",
+      "parent": "s_playing_audio",
+      "initial": true
+    },
+    {
+      "id": "s_playing_audio_done",
+      "label": "done",
+      "path": "playing.audio.done",
+      "type": "final",
+      "parent": "s_playing_audio",
+      "initial": false
+    },
+    {
+      "id": "s_playing_captions",
+      "label": "captions",
+      "path": "playing.captions",
+      "type": "compound",
+      "parent": "s_playing",
+      "initial": false
+    },
+    {
+      "id": "s_playing_captions_done",
+      "label": "done",
+      "path": "playing.captions.done",
+      "type": "final",
+      "parent": "s_playing_captions",
+      "initial": false
+    },
+    {
+      "id": "s_playing_captions_rendering_captions",
+      "label": "rendering_captions",
+      "path": "playing.captions.rendering_captions",
+      "type": "atomic",
+      "parent": "s_playing_captions",
+      "initial": true
+    },
+    {
+      "id": "s_playing_video",
+      "label": "video",
+      "path": "playing.video",
+      "type": "compound",
+      "parent": "s_playing",
+      "initial": false
+    },
+    {
+      "id": "s_playing_video_decoding_video",
+      "label": "decoding_video",
+      "path": "playing.video.decoding_video",
+      "type": "atomic",
+      "parent": "s_playing_video",
+      "initial": true
+    },
+    {
+      "id": "s_playing_video_done",
+      "label": "done",
+      "path": "playing.video.done",
+      "type": "final",
+      "parent": "s_playing_video",
+      "initial": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_playing_audio_decoding_audio__NEXT__1",
+      "source": "s_playing_audio_decoding_audio",
+      "event": "NEXT",
+      "target": "s_playing_audio_done"
+    },
+    {
+      "id": "s_playing_captions_rendering_captions__NEXT__1",
+      "source": "s_playing_captions_rendering_captions",
+      "event": "NEXT",
+      "target": "s_playing_captions_done"
+    },
+    {
+      "id": "s_playing_video_decoding_video__NEXT__1",
+      "source": "s_playing_video_decoding_video",
+      "event": "NEXT",
+      "target": "s_playing_video_done"
+    }
+  ]
+}

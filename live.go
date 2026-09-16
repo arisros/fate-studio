@@ -15,8 +15,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/render"
 )
 
 // LiveInstance is a type-erased statechart actor the simulator drives
@@ -66,12 +68,17 @@ type InvokeInfo struct {
 // carries what changes per event (active path, context, status). The studio
 // re-highlights the already-laid-out canvas — no re-layout per event.
 type LiveSnapshot struct {
-	Path        string          `json:"path"`
-	Context     json.RawMessage `json:"context"`
-	Status      sc.ActorStatus  `json:"status"`
-	ASCII       string          `json:"ascii"` // ASCII diagram (CLI / static view)
-	Timers      []TimerInfo     `json:"timers,omitempty"`
-	Invocations []InvokeInfo    `json:"invocations,omitempty"`
+	Path    string          `json:"path"`
+	Context json.RawMessage `json:"context"`
+	Status  sc.ActorStatus  `json:"status"`
+	ASCII   string          `json:"ascii"` // ASCII diagram (CLI / static view)
+	// UIState holds the active states' view models keyed by state path, and
+	// UIStateError why they could not be built. Same keys as fate's httphandler.
+	UIState      map[string]json.RawMessage `json:"ui_state,omitempty"`
+	UIStateError string                     `json:"ui_state_error,omitempty"`
+	Events       []string                   `json:"events"`
+	Timers       []TimerInfo                `json:"timers,omitempty"`
+	Invocations  []InvokeInfo               `json:"invocations,omitempty"`
 }
 
 // liveActor wraps a typed Actor[Ctx, Evt] as a LiveInstance.
@@ -80,6 +87,16 @@ type liveActor[Ctx any, Evt any] struct {
 	actor    *sc.Actor[Ctx, Evt]
 	dispatch func(name string) (Evt, error)
 	describe func() sc.MachineDescriptor
+
+	// describe often rebuilds the whole machine, and every snapshot needs the
+	// descriptor; a machine's topology is fixed, so one call is enough.
+	descOnce sync.Once
+	desc     sc.MachineDescriptor
+}
+
+func (e *liveActor[Ctx, Evt]) descriptor() sc.MachineDescriptor {
+	e.descOnce.Do(func() { e.desc = e.describe() })
+	return e.desc
 }
 
 // NewLiveActor builds a LiveInstance from a machine, an event-name
@@ -130,17 +147,24 @@ func (e *liveActor[Ctx, Evt]) SendEvent(_ context.Context, name string) error {
 func (e *liveActor[Ctx, Evt]) Snapshot() LiveSnapshot {
 	snap := e.actor.Snapshot()
 	ctxBytes, _ := json.Marshal(snap.Context)
-	d := e.describe()
+	d := e.descriptor()
 	activePath := snap.Value.Path()
 	hl := highlightForActivePath(activePath)
-	return LiveSnapshot{
+	out := LiveSnapshot{
 		Path:        activePath,
 		Context:     ctxBytes,
 		Status:      snap.Status,
-		ASCII:       sc.RenderASCII(d, sc.RenderOptions{Highlight: hl}),
+		ASCII:       render.ASCII(d, render.Options{Highlight: hl}),
+		Events:      e.AvailableEvents(),
 		Timers:      e.PendingTimers(),
 		Invocations: e.PendingInvocations(),
 	}
+	if views, err := e.machine.UIState(snap.Value, snap.Context); err != nil {
+		out.UIStateError = err.Error()
+	} else {
+		out.UIState = views
+	}
+	return out
 }
 
 func (e *liveActor[Ctx, Evt]) PendingTimers() []TimerInfo {
@@ -153,7 +177,9 @@ func (e *liveActor[Ctx, Evt]) PendingTimers() []TimerInfo {
 }
 
 func (e *liveActor[Ctx, Evt]) FireTimer(id string) error {
-	e.actor.FireTimer(sc.TimerID(id))
+	if !e.actor.FireTimer(sc.TimerID(id)) {
+		return fmt.Errorf("timer %q is not armed", id)
+	}
 	return nil
 }
 
@@ -173,7 +199,9 @@ func (e *liveActor[Ctx, Evt]) ResolveInvocation(id, outputJSON string) error {
 			return fmt.Errorf("output is not valid JSON: %w", err)
 		}
 	}
-	e.actor.ResolveInvocation(sc.InvokeID(id), out)
+	if !e.actor.ResolveInvocation(sc.InvokeID(id), out) {
+		return fmt.Errorf("invocation %q is not pending", id)
+	}
 	return nil
 }
 
@@ -181,7 +209,9 @@ func (e *liveActor[Ctx, Evt]) RejectInvocation(id, errMsg string) error {
 	if errMsg == "" {
 		errMsg = "rejected from studio"
 	}
-	e.actor.RejectInvocation(sc.InvokeID(id), errors.New(errMsg))
+	if !e.actor.RejectInvocation(sc.InvokeID(id), errors.New(errMsg)) {
+		return fmt.Errorf("invocation %q is not pending", id)
+	}
 	return nil
 }
 
@@ -190,22 +220,26 @@ func (e *liveActor[Ctx, Evt]) Persist() ([]byte, error) {
 }
 
 func (e *liveActor[Ctx, Evt]) AvailableEvents() []string {
-	d := e.describe()
+	d := e.descriptor()
 	path := e.actor.Snapshot().Value.Path()
 	seen := map[string]struct{}{}
-	var evts []string
-	// Parallel paths look like "a.x | b.y"; gather events from each region.
+	evts := []string{} // marshals as [] rather than null
 	for _, region := range strings.Split(path, " | ") {
-		node, ok := descriptorNodeAt(d, strings.TrimSpace(region))
-		if !ok {
-			continue
-		}
-		for k := range node.On {
-			if _, dup := seen[k]; dup {
-				continue
+		// The engine resolves an event by walking the active leaf up through
+		// its ancestors, so events declared on a compound parent are sendable.
+		for _, node := range descriptorChainAt(d, strings.TrimSpace(region)) {
+			for k := range node.On {
+				// "*" is the catch-all key: dispatchable, but not an event to offer
+				// as a button, so a state with "*" accepts more than this list.
+				if k == "*" {
+					continue
+				}
+				if _, dup := seen[k]; dup {
+					continue
+				}
+				seen[k] = struct{}{}
+				evts = append(evts, k)
 			}
-			seen[k] = struct{}{}
-			evts = append(evts, k)
 		}
 	}
 	sort.Strings(evts)
@@ -230,23 +264,25 @@ func highlightForActivePath(path string) map[string]rune {
 	return h
 }
 
-// descriptorNodeAt walks a MachineDescriptor by dot-path. Local copy of the
-// engine's unexported lookupDescriptorPath.
-func descriptorNodeAt(d sc.MachineDescriptor, path string) (sc.StateNodeDescriptor, bool) {
+// descriptorChainAt returns the node at a dot-path and each of its ancestors,
+// outermost first, or nil if the path does not resolve.
+func descriptorChainAt(d sc.MachineDescriptor, path string) []sc.StateNodeDescriptor {
 	if path == "" {
-		return sc.StateNodeDescriptor{}, false
+		return nil
 	}
 	segs := strings.Split(path, ".")
 	cur, ok := d.States[segs[0]]
 	if !ok {
-		return sc.StateNodeDescriptor{}, false
+		return nil
 	}
+	chain := []sc.StateNodeDescriptor{cur}
 	for _, s := range segs[1:] {
 		next, ok := cur.States[s]
 		if !ok {
-			return sc.StateNodeDescriptor{}, false
+			return nil
 		}
 		cur = next
+		chain = append(chain, cur)
 	}
-	return cur, true
+	return chain
 }
