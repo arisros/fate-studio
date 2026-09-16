@@ -1,0 +1,271 @@
+{
+  "id": "ticket",
+  "initial": "s_new",
+  "nodes": [
+    {
+      "id": "s_billing",
+      "label": "billing",
+      "path": "billing",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_cancelled",
+      "label": "cancelled",
+      "path": "cancelled",
+      "type": "final",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_closed",
+      "label": "closed",
+      "path": "closed",
+      "type": "final",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_general",
+      "label": "general",
+      "path": "general",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_in_progress",
+      "label": "in_progress",
+      "path": "in_progress",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_new",
+      "label": "new",
+      "path": "new",
+      "type": "atomic",
+      "parent": "",
+      "initial": true
+    },
+    {
+      "id": "s_review",
+      "label": "review",
+      "path": "review",
+      "type": "atomic",
+      "parent": "",
+      "initial": false,
+      "ui_state_schema": {
+        "properties": {
+          "approvals": {
+            "type": "integer"
+          },
+          "needed": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approvals",
+          "needed",
+          "ready"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "s_technical",
+      "label": "technical",
+      "path": "technical",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_triaged",
+      "label": "triaged",
+      "path": "triaged",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_billing__CANCEL__1",
+      "source": "s_billing",
+      "event": "CANCEL",
+      "target": "s_cancelled"
+    },
+    {
+      "id": "s_billing__NEXT__2",
+      "source": "s_billing",
+      "event": "NEXT",
+      "target": "s_in_progress"
+    },
+    {
+      "id": "s_general__CANCEL__1",
+      "source": "s_general",
+      "event": "CANCEL",
+      "target": "s_cancelled"
+    },
+    {
+      "id": "s_general__NEXT__2",
+      "source": "s_general",
+      "event": "NEXT",
+      "target": "s_in_progress"
+    },
+    {
+      "id": "s_in_progress__CANCEL__1",
+      "source": "s_in_progress",
+      "event": "CANCEL",
+      "target": "s_cancelled"
+    },
+    {
+      "id": "s_in_progress__NEXT__2",
+      "source": "s_in_progress",
+      "event": "NEXT",
+      "target": "s_review"
+    },
+    {
+      "id": "s_new__CANCEL__1",
+      "source": "s_new",
+      "event": "CANCEL",
+      "target": "s_cancelled"
+    },
+    {
+      "id": "s_new__MARK_BILLING__2",
+      "source": "s_new",
+      "event": "MARK_BILLING",
+      "target": "s_new",
+      "actions": [
+        "setCategory"
+      ],
+      "internal": true
+    },
+    {
+      "id": "s_new__MARK_TECHNICAL__3",
+      "source": "s_new",
+      "event": "MARK_TECHNICAL",
+      "target": "s_new",
+      "actions": [
+        "setCategory"
+      ],
+      "internal": true
+    },
+    {
+      "id": "s_new__NEXT__4",
+      "source": "s_new",
+      "event": "NEXT",
+      "target": "s_triaged"
+    },
+    {
+      "id": "s_review__CANCEL__1",
+      "source": "s_review",
+      "event": "CANCEL",
+      "target": "s_cancelled"
+    },
+    {
+      "id": "s_review__NEXT__2",
+      "source": "s_review",
+      "event": "NEXT",
+      "target": "s_closed",
+      "guard": "approved",
+      "cond_meta": {
+        "fields": [
+          {
+            "path": "$.approvals",
+            "op": "gte",
+            "value": 1,
+            "label": "already approved once"
+          }
+        ],
+        "sample": {
+          "approvals": 1
+        }
+      }
+    },
+    {
+      "id": "s_review__NEXT__3",
+      "source": "s_review",
+      "event": "NEXT",
+      "target": "s_review",
+      "actions": [
+        "recordApproval"
+      ],
+      "internal": true
+    },
+    {
+      "id": "s_review__REOPEN__4",
+      "source": "s_review",
+      "event": "REOPEN",
+      "target": "s_in_progress"
+    },
+    {
+      "id": "s_technical__CANCEL__1",
+      "source": "s_technical",
+      "event": "CANCEL",
+      "target": "s_cancelled"
+    },
+    {
+      "id": "s_technical__NEXT__2",
+      "source": "s_technical",
+      "event": "NEXT",
+      "target": "s_in_progress"
+    },
+    {
+      "id": "s_triaged__CANCEL__1",
+      "source": "s_triaged",
+      "event": "CANCEL",
+      "target": "s_cancelled"
+    },
+    {
+      "id": "s_triaged__ROUTE__2",
+      "source": "s_triaged",
+      "event": "ROUTE",
+      "target": "s_billing",
+      "guard": "is_billing",
+      "cond_meta": {
+        "fields": [
+          {
+            "path": "$.category",
+            "op": "eq",
+            "value": "billing"
+          }
+        ],
+        "sample": {
+          "category": "billing"
+        }
+      }
+    },
+    {
+      "id": "s_triaged__ROUTE__3",
+      "source": "s_triaged",
+      "event": "ROUTE",
+      "target": "s_technical",
+      "guard": "is_technical",
+      "cond_meta": {
+        "fields": [
+          {
+            "path": "$.category",
+            "op": "eq",
+            "value": "technical"
+          }
+        ],
+        "sample": {
+          "category": "technical"
+        }
+      }
+    },
+    {
+      "id": "s_triaged__ROUTE__4",
+      "source": "s_triaged",
+      "event": "ROUTE",
+      "target": "s_general"
+    }
+  ]
+}

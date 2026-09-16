@@ -1,0 +1,50 @@
+{
+  "id": "traffic-light",
+  "initial": "s_red",
+  "nodes": [
+    {
+      "id": "s_green",
+      "label": "green",
+      "path": "green",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_red",
+      "label": "red",
+      "path": "red",
+      "type": "atomic",
+      "parent": "",
+      "initial": true
+    },
+    {
+      "id": "s_yellow",
+      "label": "yellow",
+      "path": "yellow",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_green__NEXT__1",
+      "source": "s_green",
+      "event": "NEXT",
+      "target": "s_yellow"
+    },
+    {
+      "id": "s_red__NEXT__1",
+      "source": "s_red",
+      "event": "NEXT",
+      "target": "s_green"
+    },
+    {
+      "id": "s_yellow__NEXT__1",
+      "source": "s_yellow",
+      "event": "NEXT",
+      "target": "s_red"
+    }
+  ]
+}

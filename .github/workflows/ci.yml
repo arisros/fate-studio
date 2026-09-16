@@ -53,7 +53,7 @@ jobs:
           args: check
 
   ui:
-    name: build UI (React Flow) + drift check
+    name: test and build UI + drift check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +62,8 @@ jobs:
           node-version: '22'
       # Hard gate: the UI must type-check and build (tsc --noEmit && vite build).
       - run: npm ci
+        working-directory: ui
+      - run: npm test
         working-directory: ui
       - run: npm run build
         working-directory: ui

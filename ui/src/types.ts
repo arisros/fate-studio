@@ -1,7 +1,7 @@
 // Mirrors the Go backend contracts:
-//   Graph/GraphNode/GraphEdge  -> vendor/github.com/arisros/fate/graph.go
+//   Graph/GraphNode/GraphEdge  -> vendor/github.com/arisros/fate/render/graph.go
 //   LiveSnapshot/Timer/Invoke  -> live.go
-//   snapResponse               -> simulator.go
+//   SimFrame                   -> simulator.go
 //   /api/machines              -> server.go (new endpoint)
 
 export type NodeType =
@@ -10,6 +10,22 @@ export type NodeType =
   | "parallel"
   | "final"
   | "history";
+
+// CondField describes one predicate that a Guard checks on the actor context.
+// Mirrors fate's cond_meta.go.
+export interface CondField {
+  path: string; // "$.score" or "$.customer.name"
+  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "truthy" | "falsy";
+  value?: unknown;
+  label?: string; // human display override
+}
+
+// CondMeta is informational metadata about what a transition Guard checks.
+// Displayed as a live Gate panel in the studio inspector.
+export interface CondMeta {
+  fields?: CondField[];
+  sample?: unknown; // example context object that passes the guard
+}
 
 export interface GraphNode {
   id: string; // qualified node id
@@ -21,6 +37,7 @@ export interface GraphNode {
   history?: "shallow" | "deep";
   entry?: string[];
   exit?: string[];
+  ui_state_schema?: Record<string, unknown>; // JSON Schema of the state's view model
 }
 
 export interface GraphEdge {
@@ -31,6 +48,7 @@ export interface GraphEdge {
   guard?: string;
   actions?: string[];
   internal?: boolean;
+  cond_meta?: CondMeta; // what the guard checks, when the machine declares it
 }
 
 export interface Graph {
@@ -55,12 +73,20 @@ export interface LiveSnapshot {
   context: unknown; // raw JSON
   status: string; // "running" | "stopped" | "done" | "error"
   ascii: string;
+  ui_state?: Record<string, unknown>; // view models keyed by the declaring state's path
+  ui_state_error?: string;
+  // Sendable from the active configuration. A proxied fate httphandler stream
+  // omits it, and the UI then derives the list from the graph.
+  events?: string[];
   timers?: TimerInfo[];
   invocations?: InvokeInfo[];
 }
 
-export interface SnapResponse extends LiveSnapshot {
-  events: string[]; // events sendable from the active state
+// SimFrame is what the SSE stream and the POST endpoints both return.
+export interface SimFrame extends LiveSnapshot {
+  // Steps applied in this session, oldest first. Omitted by a proxied fate
+  // httphandler stream; the UI then reads GET sim/{name}/timeline.
+  timeline?: string[];
 }
 
 export interface MachineInfo {

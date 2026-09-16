@@ -185,3 +185,92 @@ func TestServer_DescribeJSON(t *testing.T) {
 		t.Errorf("descriptor ID: got %q", d.ID)
 	}
 }
+
+// ----- ancestor-declared transitions -----
+
+type ancCtx struct{}
+type ancEvt interface{ isAncEvt() }
+type ancStep struct{}
+type ancAbort struct{}
+
+func (ancStep) isAncEvt()          {}
+func (ancStep) EventName() string  { return "STEP" }
+func (ancAbort) isAncEvt()         {}
+func (ancAbort) EventName() string { return "ABORT" }
+
+// ancestorMachine declares ABORT on the compound parent "work" and STEP on its
+// leaf. The engine resolves an event by walking the active leaf up through its
+// ancestors, so ABORT is sendable while sitting in "work.one" even though the
+// leaf itself declares no such transition.
+func ancestorMachine() *sc.Machine[ancCtx, ancEvt] {
+	m, err := sc.CreateMachine(sc.MachineConfig[ancCtx, ancEvt]{
+		ID:      "ancestor",
+		Initial: "work",
+		States: map[string]sc.StateNodeConfig[ancCtx, ancEvt]{
+			"work": {
+				Initial: "one",
+				On:      map[string][]sc.TransitionConfig[ancCtx, ancEvt]{"ABORT": {{Target: "cancelled"}}},
+				States: map[string]sc.StateNodeConfig[ancCtx, ancEvt]{
+					"one": {On: map[string][]sc.TransitionConfig[ancCtx, ancEvt]{"STEP": {{Target: "two"}}}},
+					"two": {},
+				},
+			},
+			"cancelled": {},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
+
+func ancDispatch(name string) (ancEvt, error) {
+	switch name {
+	case "STEP":
+		return ancStep{}, nil
+	case "ABORT":
+		return ancAbort{}, nil
+	}
+	return nil, studio.ErrUnknownEvent{Name: name}
+}
+
+func TestLiveActor_AvailableEventsIncludesAncestors(t *testing.T) {
+	la := studio.NewLiveActor(ancestorMachine(), ancDispatch, ancestorMachine().Describe)
+	if err := la.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := la.Snapshot().Path; got != "work.one" {
+		t.Fatalf("initial path: got %q want work.one", got)
+	}
+
+	// ABORT is declared on the parent "work", STEP on the leaf. Both must be
+	// listed: before this, only the leaf's own events were collected.
+	got := la.AvailableEvents()
+	want := []string{"ABORT", "STEP"}
+	if len(got) != len(want) {
+		t.Fatalf("available events: got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("available events: got %v want %v", got, want)
+		}
+	}
+
+	// The listed event must actually dispatch — a name the studio offers but
+	// the engine refuses is the bug this guards against.
+	if err := la.SendEvent(context.Background(), "ABORT"); err != nil {
+		t.Fatalf("SendEvent(ABORT): %v", err)
+	}
+	if got := la.Snapshot().Path; got != "cancelled" {
+		t.Errorf("after ABORT: got %q want cancelled", got)
+	}
+}
+
+func TestLiveActor_SnapshotCarriesEvents(t *testing.T) {
+	la := studio.NewLiveActor(trafficLight(), dispatch, trafficLight().Describe)
+	_ = la.Start(context.Background())
+	snap := la.Snapshot()
+	if len(snap.Events) != 1 || snap.Events[0] != "NEXT" {
+		t.Errorf("snapshot events: got %v want [NEXT]", snap.Events)
+	}
+}

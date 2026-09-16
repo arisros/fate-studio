@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -277,5 +278,51 @@ func doPost(t *testing.T, c *http.Client, url, form string, wantCode int, wantSu
 	}
 	if wantSub != "" && !strings.Contains(string(body), wantSub) {
 		t.Fatalf("POST %s: body missing %q (got %s)", url, wantSub, body)
+	}
+}
+
+// A mounted studio must serve a shell whose asset, API and SSE URLs resolve
+// under the mount prefix. Before SetBasePath the page asked for /assets/... and
+// /api/... at the site root and rendered blank behind any prefix.
+func TestServer_MountedUnderPrefix(t *testing.T) {
+	srv := newTestServer().SetBasePath("/studio/")
+	mux := http.NewServeMux()
+	mux.Handle("/studio/", http.StripPrefix("/studio", srv.Handler()))
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	shell := doGet(t, ts.Client(), ts.URL+"/studio/", 200)
+	if !strings.Contains(shell, `<base href="/studio/">`) {
+		t.Fatalf("shell should carry the mount prefix as its <base>:\n%s", shell)
+	}
+	if strings.Contains(shell, `href="/assets/`) || strings.Contains(shell, `src="/assets/`) {
+		t.Errorf("shell must not reference site-root assets:\n%s", shell)
+	}
+
+	// Every asset the shell names must actually be served under the prefix.
+	ref := regexp.MustCompile(`(?:src|href)="(/studio/assets/[^"]+)"`).FindAllStringSubmatch(shell, -1)
+	if len(ref) == 0 {
+		t.Fatalf("shell references no prefixed assets:\n%s", shell)
+	}
+	for _, m := range ref {
+		doGet(t, ts.Client(), ts.URL+m[1], 200)
+	}
+	doGet(t, ts.Client(), ts.URL+"/studio/api/machines", 200)
+	doGet(t, ts.Client(), ts.URL+"/studio/m/traffic-light/graph", 200)
+
+	// Deep links serve the same shell, so a reload of /studio/sim/x still works.
+	deep := doGet(t, ts.Client(), ts.URL+"/studio/sim/traffic-light", 200)
+	if !strings.Contains(deep, `<base href="/studio/">`) {
+		t.Errorf("deep link should serve the same prefixed shell:\n%s", deep)
+	}
+}
+
+// The default (unmounted) studio keeps serving from the site root.
+func TestServer_DefaultBasePathIsRoot(t *testing.T) {
+	ts := httptest.NewServer(newTestServer().Handler())
+	defer ts.Close()
+	shell := doGet(t, ts.Client(), ts.URL+"/", 200)
+	if !strings.Contains(shell, `<base href="/">`) {
+		t.Errorf(`default shell should carry <base href="/">:\n%s`, shell)
 	}
 }

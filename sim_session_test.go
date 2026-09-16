@@ -1,6 +1,7 @@
 package studio_test
 
 import (
+	"bufio"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,9 +10,12 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/render"
 )
 
 // clientFor returns an http.Client with a cookie jar (so fate_sid persists
@@ -181,7 +185,7 @@ func TestServer_GraphEndpoint(t *testing.T) {
 	}
 	b, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	var g sc.Graph
+	var g render.Graph
 	if err := json.Unmarshal(b, &g); err != nil {
 		t.Fatalf("graph unmarshal: %v", err)
 	}
@@ -237,5 +241,112 @@ func TestServer_DescribeStillWorks(t *testing.T) {
 	var d sc.MachineDescriptor
 	if err := json.Unmarshal(b, &d); err != nil || d.ID != "traffic-light" {
 		t.Errorf("describe broke: err=%v id=%q", err, d.ID)
+	}
+}
+
+// Every mutating endpoint returns the same frame the SSE stream pushes: actor
+// snapshot, sendable events, and the session timeline. A client that reloads
+// mid-session gets the recorded history back instead of an empty list.
+func TestSim_FrameCarriesEventsAndTimeline(t *testing.T) {
+	c, base, closeFn := clientFor(t)
+	defer closeFn()
+
+	_, body := post(t, c, base+"/sim/traffic-light/send", url.Values{"event": {"NEXT"}})
+	var frame struct {
+		Path     string   `json:"path"`
+		Events   []string `json:"events"`
+		Timeline []string `json:"timeline"`
+	}
+	if err := json.Unmarshal([]byte(body), &frame); err != nil {
+		t.Fatalf("decode frame: %v (%s)", err, body)
+	}
+	if frame.Path != "green" {
+		t.Errorf("path: got %q want green", frame.Path)
+	}
+	if len(frame.Events) != 1 || frame.Events[0] != "NEXT" {
+		t.Errorf("events: got %v want [NEXT]", frame.Events)
+	}
+	if len(frame.Timeline) != 1 || frame.Timeline[0] != "NEXT" {
+		t.Errorf("timeline: got %v want [NEXT]", frame.Timeline)
+	}
+
+	// A fresh stream replays the same session state to a reconnecting client.
+	resp, err := c.Get(base + "/sim/traffic-light/stream")
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	defer resp.Body.Close()
+	buf := make([]byte, 4096)
+	n, _ := resp.Body.Read(buf)
+	if first := string(buf[:n]); !strings.Contains(first, `"timeline":["NEXT"]`) {
+		t.Errorf("first SSE frame should carry the timeline; got %s", first)
+	}
+}
+
+// Concurrent mutations must not publish a stale frame last: each apply
+// broadcasts under the lock that produced it.
+func TestSim_ConcurrentSendsPublishFinalState(t *testing.T) {
+	c, base, closeFn := clientFor(t)
+	defer closeFn()
+	// Establish the session first so all workers share one actor.
+	post(t, c, base+"/sim/traffic-light/send", url.Values{"event": {"NEXT"}})
+
+	resp, err := c.Get(base + "/sim/traffic-light/stream")
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	defer resp.Body.Close()
+	frames := make(chan int, 64)
+	go func() {
+		sc := bufio.NewScanner(resp.Body)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			data, ok := strings.CutPrefix(sc.Text(), "data: ")
+			if !ok {
+				continue
+			}
+			var f struct {
+				Timeline []string `json:"timeline"`
+			}
+			if json.Unmarshal([]byte(data), &f) == nil {
+				frames <- len(f.Timeline)
+			}
+		}
+		close(frames)
+	}()
+
+	const n = 12
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for range n {
+		go func() {
+			defer wg.Done()
+			post(t, c, base+"/sim/traffic-light/send", url.Values{"event": {"NEXT"}})
+		}()
+	}
+	wg.Wait()
+
+	// The stream must end on the final state, not a frame produced earlier.
+	deadline := time.After(5 * time.Second)
+	for last := -1; last != n+1; {
+		select {
+		case l, ok := <-frames:
+			if !ok {
+				t.Fatalf("stream closed; last timeline length %d", last)
+			}
+			if l < last {
+				t.Fatalf("frame went backwards: %d after %d", l, last)
+			}
+			last = l
+		case <-deadline:
+			t.Fatalf("never received the final frame (timeline %d); last seen %d", n+1, last)
+		}
+	}
+
+	r2, _ := c.Get(base + "/sim/traffic-light/timeline")
+	tb, _ := io.ReadAll(r2.Body)
+	r2.Body.Close()
+	if got := strings.Count(string(tb), "NEXT"); got != n+1 {
+		t.Errorf("timeline should record all %d sends; got %d (%s)", n+1, got, tb)
 	}
 }

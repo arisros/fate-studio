@@ -1,8 +1,6 @@
-// Package demos provides a small set of generic statechart machines used by the
-// fate and fate-studio binaries to showcase the engine and studio. They are
-// illustrative shapes — a traffic light, a media player, a build pipeline, a
-// deep-history document editor, and a live-context counter — chosen to exercise
-// compound, parallel, final, deep-history, and context-mutation features.
+// Package demos provides generic statechart machines that together exercise
+// every studio feature. They back the fate-studio binary and generate the
+// fixtures the UI tests run against (see fixtures_test.go).
 package demos
 
 import (
@@ -57,6 +55,8 @@ func All() []Demo {
 		demoFor("counter", "Live context: increment, decrement, and reset a counter.", Counter, CounterDispatch),
 		demoFor("timeout", "Delayed transition: a pending after-timer you fire from the studio.", Timeout, TimeoutDispatch),
 		demoFor("fetch", "Invocation: a pending request you resolve or reject from the studio.", Fetch, FetchDispatch),
+		demoFor("order", "Parallel lanes progress independently; two of them publish a view model.", Order, namedDispatch(Order)),
+		demoFor("ticket", "Global events are badged, ROUTE is gated on the category, and review shows a view model.", Ticket, namedDispatch(Ticket)),
 	}
 }
 
