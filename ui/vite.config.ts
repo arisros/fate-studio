@@ -1,27 +1,61 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const wasmSrc  = path.resolve(__dirname, "node_modules/libavoid-js/dist/libavoid.wasm");
+const wasmDist = path.resolve(__dirname, "../assets/libavoid.wasm");
 
 // The Go server embeds the build output (../assets) via go:embed and serves
 // hashed files under /assets/*, with index.html returned for all SPA routes.
 //
-// These paths are absolute because Vite requires it. That pins the built shell
-// to the site root, so the server rewrites both the <base> element and these
-// /assets/ references to its mount prefix before serving the page (see
-// spa.go). Everything else the app requests — API calls, the SSE stream — is
-// written relative and resolves against that <base>.
+// URLs in index.html stay absolute; the server rewrites them and the <base>
+// element to its mount prefix (see spa.go). URLs inside the bundle (lazy chunks
+// and their CSS) are emitted relative to the importing chunk, which the server
+// cannot rewrite. API calls and the SSE stream resolve against <base>.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      // Make libavoid.wasm available at /assets/libavoid.wasm:
+      //   dev  → Vite middleware intercepts the request
+      //   prod → writeBundle copies the file next to the hashed JS bundle
+      name: "libavoid-wasm",
+      configureServer(server) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        server.middlewares.use("/assets/libavoid.wasm", (_req: any, res: any) => {
+          res.setHeader("Content-Type", "application/wasm");
+          fs.createReadStream(wasmSrc).pipe(res);
+        });
+      },
+      writeBundle() {
+        if (fs.existsSync(wasmSrc)) fs.copyFileSync(wasmSrc, wasmDist);
+      },
+    },
+  ],
   base: "/assets/",
+  experimental: {
+    renderBuiltUrl: (filename, { hostType }) =>
+      hostType === "html" ? `/assets/${filename}` : { relative: true },
+  },
   build: {
     outDir: "../assets",
     emptyOutDir: true,
     assetsDir: ".",
-    // index.html lands in ../assets/index.html; hashed js/css beside it.
     rollupOptions: {
       output: {
         entryFileNames: "app-[hash].js",
         chunkFileNames: "chunk-[hash].js",
         assetFileNames: "[name]-[hash][extname]",
+        // Split the heavy graph engines into their own chunks so they load with
+        // the (lazy) chart, not in the initial app shell.
+        manualChunks(id) {
+          if (id.includes("node_modules/elkjs")) return "elk";
+          if (id.includes("node_modules/libavoid-js")) return "libavoid";
+          if (id.includes("node_modules/@xyflow")) return "xyflow";
+        },
       },
     },
   },

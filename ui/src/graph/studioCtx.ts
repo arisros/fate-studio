@@ -4,7 +4,7 @@ import { createContext, useContext } from "react";
 // to send one — without threading callbacks through React Flow node data.
 export interface StudioCtxValue {
   interactive: boolean; // sim mode (rows clickable) vs static view
-  sendable: Set<string>; // event names dispatchable from the active leaf(s)
+  sendable: Set<string>; // event names dispatchable from the active configuration
   onSend: (event: string) => void;
 }
 
