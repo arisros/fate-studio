@@ -1,4 +1,4 @@
-.PHONY: ui build test vet lint run
+.PHONY: ui build test vet lint run fixtures
 
 # Build the React Flow UI (Vite) into ./assets, which is embedded by go:embed.
 # Commit the ./assets output so the Go build/release stays node-free + hermetic.
@@ -16,3 +16,7 @@ vet:
 
 run:
 	GOFLAGS=-mod=vendor go run ./cmd/fate-studio
+
+# Regenerate testdata/snapshots and the UI graph fixtures from the demos.
+fixtures:
+	GOFLAGS=-mod=vendor go test ./internal/demos -run TestFixtures -update

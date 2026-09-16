@@ -1,0 +1,40 @@
+{
+  "id": "pipeline",
+  "initial": "ingest",
+  "context": {},
+  "states": {
+    "done": {
+      "type": "final"
+    },
+    "ingest": {
+      "type": "atomic",
+      "on": {
+        "NEXT": [
+          {
+            "target": "validate"
+          }
+        ]
+      }
+    },
+    "transform": {
+      "type": "atomic",
+      "on": {
+        "NEXT": [
+          {
+            "target": "done"
+          }
+        ]
+      }
+    },
+    "validate": {
+      "type": "atomic",
+      "on": {
+        "NEXT": [
+          {
+            "target": "transform"
+          }
+        ]
+      }
+    }
+  }
+}

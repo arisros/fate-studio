@@ -1,0 +1,154 @@
+{
+  "id": "ticket",
+  "initial": "new",
+  "context": {
+    "category": "",
+    "approvals": 0
+  },
+  "states": {
+    "billing": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      }
+    },
+    "cancelled": {
+      "type": "final"
+    },
+    "closed": {
+      "type": "final"
+    },
+    "general": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      }
+    },
+    "in_progress": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "review"
+          }
+        ]
+      }
+    },
+    "new": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "MARK_BILLING": [
+          {
+            "internal": true,
+            "actions": [
+              ""
+            ]
+          }
+        ],
+        "MARK_TECHNICAL": [
+          {
+            "internal": true,
+            "actions": [
+              ""
+            ]
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "triaged"
+          }
+        ]
+      }
+    },
+    "review": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "closed"
+          },
+          {
+            "internal": true,
+            "actions": [
+              ""
+            ]
+          }
+        ],
+        "REOPEN": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      }
+    },
+    "technical": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "NEXT": [
+          {
+            "target": "in_progress"
+          }
+        ]
+      }
+    },
+    "triaged": {
+      "type": "atomic",
+      "on": {
+        "CANCEL": [
+          {
+            "target": "cancelled"
+          }
+        ],
+        "ROUTE": [
+          {
+            "target": "billing"
+          },
+          {
+            "target": "technical"
+          },
+          {
+            "target": "general"
+          }
+        ]
+      }
+    }
+  }
+}

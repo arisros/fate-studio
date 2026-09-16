@@ -1,0 +1,30 @@
+{
+  "id": "timeout",
+  "initial": "s_waiting",
+  "nodes": [
+    {
+      "id": "s_expired",
+      "label": "expired",
+      "path": "expired",
+      "type": "final",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_waiting",
+      "label": "waiting",
+      "path": "waiting",
+      "type": "atomic",
+      "parent": "",
+      "initial": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_waiting__RESTART__1",
+      "source": "s_waiting",
+      "event": "RESTART",
+      "target": "s_waiting"
+    }
+  ]
+}

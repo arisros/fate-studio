@@ -1,0 +1,69 @@
+{
+  "id": "media-player",
+  "initial": "playing",
+  "context": {},
+  "states": {
+    "playing": {
+      "type": "parallel",
+      "states": {
+        "audio": {
+          "type": "compound",
+          "initial": "decoding_audio",
+          "states": {
+            "decoding_audio": {
+              "type": "atomic",
+              "on": {
+                "NEXT": [
+                  {
+                    "target": "done"
+                  }
+                ]
+              }
+            },
+            "done": {
+              "type": "final"
+            }
+          }
+        },
+        "captions": {
+          "type": "compound",
+          "initial": "rendering_captions",
+          "states": {
+            "done": {
+              "type": "final"
+            },
+            "rendering_captions": {
+              "type": "atomic",
+              "on": {
+                "NEXT": [
+                  {
+                    "target": "done"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "video": {
+          "type": "compound",
+          "initial": "decoding_video",
+          "states": {
+            "decoding_video": {
+              "type": "atomic",
+              "on": {
+                "NEXT": [
+                  {
+                    "target": "done"
+                  }
+                ]
+              }
+            },
+            "done": {
+              "type": "final"
+            }
+          }
+        }
+      }
+    }
+  }
+}

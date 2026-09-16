@@ -1,0 +1,74 @@
+{
+  "id": "editor",
+  "initial": "session",
+  "context": {},
+  "states": {
+    "session": {
+      "type": "compound",
+      "initial": "editing",
+      "states": {
+        "done": {
+          "type": "final"
+        },
+        "editing": {
+          "type": "compound",
+          "initial": "draft",
+          "on": {
+            "SUSPEND": [
+              {
+                "target": "suspended"
+              }
+            ]
+          },
+          "states": {
+            "draft": {
+              "type": "atomic",
+              "on": {
+                "NEXT": [
+                  {
+                    "target": "review"
+                  }
+                ]
+              }
+            },
+            "hist": {
+              "type": "history",
+              "default": "draft",
+              "history": "deep"
+            },
+            "publishing": {
+              "type": "atomic",
+              "on": {
+                "NEXT": [
+                  {
+                    "target": "done"
+                  }
+                ]
+              }
+            },
+            "review": {
+              "type": "atomic",
+              "on": {
+                "NEXT": [
+                  {
+                    "target": "publishing"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "suspended": {
+          "type": "atomic",
+          "on": {
+            "RESUME": [
+              {
+                "target": "editing.hist"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
