@@ -2,9 +2,9 @@ import type { Graph } from "../../types";
 
 // detectGlobalEvents finds the high-degree transitions whose lines would clutter
 // the chart — they get badged on nodes instead of drawn as edges. Two patterns:
-//   • convergent (many sources → ≤2 targets): a global sink like TERMINATE.
-//   • divergent  (≤2 sources → many targets): a hub like DETOUR_BACK / reassign.
-// A backbone chain (many → many, e.g. FORWARD) is NOT badged.
+//   • convergent (many sources → ≤2 targets): a sink like the ticket demo's CANCEL.
+//   • divergent  (≤2 sources → many targets): a hub like the ticket demo's ROUTE.
+// A backbone chain (many → many, like the ticket demo's NEXT) is not badged.
 export function detectGlobalEvents(graph: Graph): string[] {
   const src = new Map<string, Set<string>>();
   const tgt = new Map<string, Set<string>>();

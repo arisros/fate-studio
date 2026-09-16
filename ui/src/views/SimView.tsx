@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
 import type { CondMeta, Graph, GraphNode, LiveSnapshot, SimFrame } from "../types";
@@ -6,6 +6,7 @@ import { LazyChart as Chart } from "../graph/render/LazyChart";
 import { StudioCtx } from "../graph/studioCtx";
 import { useSimStream } from "../sse";
 import { activeFromPath } from "../graph/active";
+import { eventsFromGraph } from "../graph/model/events";
 import { useTheme } from "../theme";
 import { useToast } from "../toast";
 import { ActivePath, ContextPanel, EffectsPanel, StatusBadge, Timeline } from "../components";
@@ -24,9 +25,9 @@ function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: u
         const val = obj[key];
         const type = propSchema.type ?? "unknown";
         return (
-          <>
-            <dt key={`dt-${key}`} style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>{key}</dt>
-            <dd key={`dd-${key}`} style={{ margin: 0, fontFamily: "var(--mono)" }}>
+          <Fragment key={key}>
+            <dt style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>{key}</dt>
+            <dd style={{ margin: 0, fontFamily: "var(--mono)" }}>
               {type === "boolean" ? (
                 <span
                   style={{
@@ -45,7 +46,7 @@ function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: u
                 <span>{val !== undefined ? String(val) : "—"}</span>
               )}
             </dd>
-          </>
+          </Fragment>
         );
       })}
     </dl>
@@ -242,6 +243,25 @@ function GateSection({ graph, snap, active }: { graph: Graph | null; snap: LiveS
   );
 }
 
+// useTimeline returns the frame's timeline, or fetches it after each frame
+// when the frame does not carry one.
+function useTimeline(name: string, snap: SimFrame | null): string[] {
+  const [fetched, setFetched] = useState<string[]>([]);
+  const own = snap?.timeline;
+  useEffect(() => {
+    if (!snap || own) return;
+    let stale = false;
+    api
+      .timeline(name)
+      .then((t) => !stale && setFetched(t))
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [name, snap, own]);
+  return own ?? fetched;
+}
+
 export function SimView() {
   const { name = "" } = useParams();
   const [graph, setGraph] = useState<Graph | null>(null);
@@ -256,7 +276,11 @@ export function SimView() {
 
   const snap: SimFrame | null = snapshot;
   const active = useMemo(() => activeFromPath(snap?.path ?? ""), [snap?.path]);
-  const sendable = useMemo(() => new Set(snap?.events ?? []), [snap?.events]);
+  const sendable = useMemo(
+    () => new Set(snap?.events ?? (graph ? eventsFromGraph(graph, active.paths) : [])),
+    [snap?.events, graph, active],
+  );
+  const timeline = useTimeline(name, snap);
 
   // Mutations broadcast their resulting frame before replying, so state and
   // timeline arrive over SSE; nothing to mirror locally.
@@ -377,7 +401,7 @@ export function SimView() {
           <GateSection graph={graph} snap={snap} active={active} />
           <section>
             <h2>Timeline</h2>
-            <Timeline events={snap?.timeline ?? []} />
+            <Timeline events={timeline} />
           </section>
         </aside>
       </div>
