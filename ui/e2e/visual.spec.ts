@@ -129,3 +129,30 @@ for (const host of HOSTS) {
     });
   });
 }
+
+for (const host of HOSTS) {
+  test(`ticket simulator shows gates and the review view model @ ${host}`, async ({ page }) => {
+    await page.goto(`${host}/sim/ticket`, { waitUntil: "domcontentloaded" });
+    const send = async (ev: string) => {
+      await page.locator(".ev-btn", { hasText: new RegExp(`^${ev}$`) }).click();
+      await page.waitForTimeout(400);
+    };
+    await page.locator(".subbar .btn", { hasText: "reset" }).click();
+    await page.waitForTimeout(400);
+    await send("MARK_TECHNICAL");
+    await send("NEXT");
+    const gates = page.locator(".inspector section", { hasText: "Gates" });
+    await expect(gates).toContainText("$.category");
+    await send("ROUTE");
+    await expect(page.locator(".state-path")).toHaveText("technical");
+    await send("NEXT");
+    await send("NEXT");
+    const views = page.locator(".inspector section", { hasText: "View models" });
+    await expect(views).toContainText("review");
+    await expect(views).toContainText("approvals");
+    await send("NEXT");
+    await expect(views).toContainText("true");
+    await send("NEXT");
+    await expect(page.locator(".state-path")).toHaveText("closed");
+  });
+}

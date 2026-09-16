@@ -15,7 +15,7 @@ import type { ActiveSet } from "../graph/active";
 
 // Renders UIState fields using the JSON Schema when available; falls back to raw JSON.
 function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: unknown }) {
-  const props = (schema.properties ?? {}) as Record<string, { type?: string }>;
+  const props = (schema.properties ?? {}) as Record<string, { type?: unknown }>;
   const obj = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
   const entries = Object.entries(props);
   if (!entries.length) return <ContextPanel context={data} />;
@@ -23,7 +23,7 @@ function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: u
     <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px", fontSize: 12 }}>
       {entries.map(([key, propSchema]) => {
         const val = obj[key];
-        const type = propSchema.type ?? "unknown";
+        const type = schemaType(propSchema) ?? "unknown";
         return (
           <Fragment key={key}>
             <dt style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>{key}</dt>
@@ -40,7 +40,7 @@ function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: u
                 >
                   {val ? "true" : "false"}
                 </span>
-              ) : type === "number" ? (
+              ) : type === "number" || type === "integer" ? (
                 <span style={{ color: "var(--number, #7cf)" }}>{val !== undefined ? String(val) : "—"}</span>
               ) : (
                 <span>{val !== undefined ? String(val) : "—"}</span>
@@ -54,81 +54,43 @@ function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: u
 }
 
 function UIStateSection({ snap, graph }: { snap: LiveSnapshot | null; graph: Graph | null }) {
-  const [editing, setEditing] = useState(false);
-  const [editRaw, setEditRaw] = useState("");
-
-  const hasServerState = snap?.uiState != null;
-
-  // When a new server UIState arrives and we're not editing, sync the edit buffer.
-  useEffect(() => {
-    if (!editing && hasServerState) {
-      setEditRaw(JSON.stringify(snap!.uiState, null, 2));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snap?.uiState, editing]);
-
-  // Find the active node's uiStateSchema from the graph.
-  const activeSchema = useMemo<Record<string, unknown> | null>(() => {
-    if (!graph || !snap?.path) return null;
-    const firstRegion = snap.path.split(" | ")[0].trim();
-    const node = graph.nodes.find((n: GraphNode) => n.path === firstRegion);
-    return node?.uiStateSchema ?? null;
-  }, [graph, snap?.path]);
-
-  const useStructuredView =
-    !editing &&
-    activeSchema != null &&
-    activeSchema.type === "object" &&
-    typeof activeSchema.properties === "object";
-
-  if (!hasServerState && !editing) return null;
-
-  let displayValue: unknown = snap?.uiState;
-  let parseErr = "";
-  if (editing) {
-    try {
-      displayValue = JSON.parse(editRaw);
-    } catch (e) {
-      parseErr = e instanceof Error ? e.message : "invalid JSON";
-    }
-  }
+  const views = snap?.ui_state;
+  const schemaByPath = useMemo(
+    () => new Map((graph?.nodes ?? []).map((n: GraphNode) => [n.path, n.ui_state_schema])),
+    [graph],
+  );
+  if (!views && !snap?.ui_state_error) return null;
 
   return (
     <section>
-      <h2>
-        UI State{" "}
-        <button
-          className="btn ghost"
-          style={{ fontSize: 11, padding: "2px 8px", marginLeft: 6 }}
-          onClick={() => {
-            if (editing) {
-              setEditing(false);
-            } else {
-              setEditRaw(JSON.stringify(snap?.uiState ?? {}, null, 2));
-              setEditing(true);
-            }
-          }}
-        >
-          {editing ? "reset" : "edit"}
-        </button>
-      </h2>
-      {editing ? (
-        <>
-          <textarea
-            className="ctx-body"
-            style={{ width: "100%", resize: "vertical", minHeight: 100 }}
-            value={editRaw}
-            onChange={(e) => setEditRaw(e.target.value)}
-          />
-          {parseErr && <span style={{ fontSize: 11, color: "var(--danger)" }}>⚠ {parseErr}</span>}
-        </>
-      ) : useStructuredView ? (
-        <SchemaView schema={activeSchema!} data={displayValue} />
-      ) : (
-        <ContextPanel context={displayValue} />
-      )}
+      <h2>View models</h2>
+      {snap?.ui_state_error && <p className="err-box">{snap.ui_state_error}</p>}
+      {Object.keys(views ?? {})
+        .sort()
+        .map((path) => {
+          const schema = schemaByPath.get(path);
+          const data = views![path];
+          return (
+            <div key={path} className="ui-state">
+              <div className="muted">{path}</div>
+              {schema && schemaType(schema) === "object" && typeof schema.properties === "object" ? (
+                <SchemaView schema={schema} data={data} />
+              ) : (
+                <ContextPanel context={data} />
+              )}
+            </div>
+          );
+        })}
     </section>
   );
+}
+
+// schemaType returns a schema's type, ignoring the "null" that marks a
+// nullable value.
+function schemaType(schema: { type?: unknown }): string | undefined {
+  const t = schema.type;
+  if (Array.isArray(t)) return t.find((x) => x !== "null");
+  return typeof t === "string" ? t : undefined;
 }
 
 // GateEdgePanel renders one transition's gate conditions with live open/closed status.
@@ -223,7 +185,7 @@ function GateSection({ graph, snap, active }: { graph: Graph | null; snap: LiveS
     const pathById = new Map(graph.nodes.map((n) => [n.id, n.path]));
     return graph.edges.filter((e) => {
       const srcPath = pathById.get(e.source) ?? "";
-      return active.paths.has(srcPath) && e.condMeta != null;
+      return active.paths.has(srcPath) && e.cond_meta != null;
     });
   }, [graph, snap, active]);
 
@@ -233,7 +195,7 @@ function GateSection({ graph, snap, active }: { graph: Graph | null; snap: LiveS
     <section>
       <h2>Gates</h2>
       {gatedEdges.map((edge) => {
-        const meta = edge.condMeta!;
+        const meta = edge.cond_meta!;
         const evals = evaluateGates(meta, snap?.context);
         return (
           <GateEdgePanel key={edge.id} event={edge.event} meta={meta} evals={evals} />

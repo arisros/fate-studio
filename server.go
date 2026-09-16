@@ -9,6 +9,7 @@ import (
 	"time"
 
 	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/render"
 )
 
 // Entry is one registered machine. Build returns the static descriptor;
@@ -211,7 +212,7 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 		// Resolved node/edge graph for the studio canvas (laid out by elkjs in
 		// the browser). Structure only — active highlight comes from SSE.
 		w.Header().Set("content-type", "application/json")
-		_ = json.NewEncoder(w).Encode(sc.RenderGraphJSON(entry.Build()))
+		_ = json.NewEncoder(w).Encode(render.GraphJSON(entry.Build()))
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "describe" {

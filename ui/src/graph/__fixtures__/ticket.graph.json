@@ -56,7 +56,26 @@
       "path": "review",
       "type": "atomic",
       "parent": "",
-      "initial": false
+      "initial": false,
+      "ui_state_schema": {
+        "properties": {
+          "approvals": {
+            "type": "integer"
+          },
+          "needed": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approvals",
+          "needed",
+          "ready"
+        ],
+        "type": "object"
+      }
     },
     {
       "id": "s_technical",
@@ -124,7 +143,7 @@
       "event": "MARK_BILLING",
       "target": "s_new",
       "actions": [
-        ""
+        "setCategory"
       ],
       "internal": true
     },
@@ -134,7 +153,7 @@
       "event": "MARK_TECHNICAL",
       "target": "s_new",
       "actions": [
-        ""
+        "setCategory"
       ],
       "internal": true
     },
@@ -154,7 +173,21 @@
       "id": "s_review__NEXT__2",
       "source": "s_review",
       "event": "NEXT",
-      "target": "s_closed"
+      "target": "s_closed",
+      "guard": "approved",
+      "cond_meta": {
+        "fields": [
+          {
+            "path": "$.approvals",
+            "op": "gte",
+            "value": 1,
+            "label": "already approved once"
+          }
+        ],
+        "sample": {
+          "approvals": 1
+        }
+      }
     },
     {
       "id": "s_review__NEXT__3",
@@ -162,7 +195,7 @@
       "event": "NEXT",
       "target": "s_review",
       "actions": [
-        ""
+        "recordApproval"
       ],
       "internal": true
     },
@@ -194,13 +227,39 @@
       "id": "s_triaged__ROUTE__2",
       "source": "s_triaged",
       "event": "ROUTE",
-      "target": "s_billing"
+      "target": "s_billing",
+      "guard": "is_billing",
+      "cond_meta": {
+        "fields": [
+          {
+            "path": "$.category",
+            "op": "eq",
+            "value": "billing"
+          }
+        ],
+        "sample": {
+          "category": "billing"
+        }
+      }
     },
     {
       "id": "s_triaged__ROUTE__3",
       "source": "s_triaged",
       "event": "ROUTE",
-      "target": "s_technical"
+      "target": "s_technical",
+      "guard": "is_technical",
+      "cond_meta": {
+        "fields": [
+          {
+            "path": "$.category",
+            "op": "eq",
+            "value": "technical"
+          }
+        ],
+        "sample": {
+          "category": "technical"
+        }
+      }
     },
     {
       "id": "s_triaged__ROUTE__4",

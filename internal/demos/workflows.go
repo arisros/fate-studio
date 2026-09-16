@@ -52,9 +52,19 @@ func statusUpdate() fate.TransitionConfig[OrderCtx, Event] {
 	return fate.TransitionConfig[OrderCtx, Event]{
 		Internal: true,
 		Actions: []fate.Action[OrderCtx, Event]{
-			fate.Assign(func(c OrderCtx, _ Event) OrderCtx { c.Updates++; return c }),
+			fate.Named("countUpdate", fate.Assign(func(c OrderCtx, _ Event) OrderCtx { c.Updates++; return c })),
 		},
 	}
+}
+
+// RegionView is what the order lanes show while in flight.
+type RegionView struct {
+	Lane    string `json:"lane"`
+	Updates int    `json:"updates"`
+}
+
+func regionView(lane string) *fate.UIState[OrderCtx] {
+	return fate.UIStateOf(func(c OrderCtx) RegionView { return RegionView{Lane: lane, Updates: c.Updates} })
 }
 
 // Order runs payment, fulfillment, and support as parallel regions.
@@ -68,6 +78,7 @@ func Order() *fate.Machine[OrderCtx, Event] {
 				Type: fate.NodeParallel,
 				States: map[string]S{
 					"payment": {
+						UIState: regionView("payment"),
 						Initial: "pending",
 						States: map[string]S{
 							"pending":    {On: on[OrderCtx]("AUTHORIZE", "authorized", "DECLINE", "declined", "CANCEL", "voided")},
@@ -78,6 +89,7 @@ func Order() *fate.Machine[OrderCtx, Event] {
 						},
 					},
 					"fulfillment": {
+						UIState: regionView("fulfillment"),
 						Initial: "picking",
 						States: map[string]S{
 							"picking":   {On: on[OrderCtx]("PICKED", "packing")},
@@ -112,7 +124,7 @@ func categorize(category string) fate.TransitionConfig[TicketCtx, Event] {
 	return fate.TransitionConfig[TicketCtx, Event]{
 		Internal: true,
 		Actions: []fate.Action[TicketCtx, Event]{
-			fate.Assign(func(c TicketCtx, _ Event) TicketCtx { c.Category = category; return c }),
+			fate.Named("setCategory", fate.Assign(func(c TicketCtx, _ Event) TicketCtx { c.Category = category; return c })),
 		},
 	}
 }
@@ -121,14 +133,24 @@ func routeTo(target, category string) fate.TransitionConfig[TicketCtx, Event] {
 	t := fate.TransitionConfig[TicketCtx, Event]{Target: target}
 	if category != "" {
 		t.Guard = func(c TicketCtx, _ Event) bool { return c.Category == category }
+		t.GuardName = "is_" + category
+		t.CondMeta = fate.Gates(fate.Field("$.category").Eq(category)).
+			Sample(fmt.Sprintf(`{"category":%q}`, category))
 	}
 	return t
 }
 
+// ReviewView is what a reviewer sees while a ticket is in review.
+type ReviewView struct {
+	Approvals int  `json:"approvals"`
+	Needed    int  `json:"needed"`
+	Ready     bool `json:"ready"`
+}
+
 // Ticket is a support ticket. NEXT walks the main chain, CANCEL leaves from
-// every open step, and ROUTE fans out from triage to one of three queues. In
-// review, NEXT closes the ticket on the second approval and otherwise records
-// one and stays.
+// every open step, and ROUTE fans out from triage to one of three queues by a
+// gated guard on the category. In review, NEXT closes the ticket on the second
+// approval and otherwise records one and stays; the review shows a view model.
 func Ticket() *fate.Machine[TicketCtx, Event] {
 	type S = fate.StateNodeConfig[TicketCtx, Event]
 	step := func(pairs ...any) S {
@@ -149,22 +171,31 @@ func Ticket() *fate.Machine[TicketCtx, Event] {
 			"technical":   step("NEXT", "in_progress"),
 			"general":     step("NEXT", "in_progress"),
 			"in_progress": step("NEXT", "review"),
-			"review": step(
+			"review": review(step(
 				"NEXT", fate.TransitionConfig[TicketCtx, Event]{
-					Target: "closed",
-					Guard:  func(c TicketCtx, _ Event) bool { return c.Approvals >= 1 },
+					Target:    "closed",
+					Guard:     func(c TicketCtx, _ Event) bool { return c.Approvals >= 1 },
+					GuardName: "approved",
+					CondMeta:  fate.Gates(fate.Field("$.approvals").WithLabel("already approved once").Gte(1)).Sample(`{"approvals":1}`),
 				},
 				"NEXT", fate.TransitionConfig[TicketCtx, Event]{
 					Internal: true,
 					Actions: []fate.Action[TicketCtx, Event]{
-						fate.Assign(func(c TicketCtx, _ Event) TicketCtx { c.Approvals++; return c }),
+						fate.Named("recordApproval", fate.Assign(func(c TicketCtx, _ Event) TicketCtx { c.Approvals++; return c })),
 					},
 				},
-				"REOPEN", "in_progress"),
+				"REOPEN", "in_progress")),
 			"closed":    {Type: fate.NodeFinal},
 			"cancelled": {Type: fate.NodeFinal},
 		},
 	}))
+}
+
+func review(s fate.StateNodeConfig[TicketCtx, Event]) fate.StateNodeConfig[TicketCtx, Event] {
+	s.UIState = fate.UIStateOf(func(c TicketCtx) ReviewView {
+		return ReviewView{Approvals: c.Approvals, Needed: 2, Ready: c.Approvals >= 1}
+	})
+	return s
 }
 
 func declaredEvents(states map[string]fate.StateNodeDescriptor) map[string]bool {

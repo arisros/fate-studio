@@ -57,12 +57,8 @@ UI tests run against fixtures generated from them.
 | `counter` | live context |
 | `timeout` | delayed transitions |
 | `fetch` | invocations |
-| `order` | parallel lanes, self-loops, layout |
-| `ticket` | global events (badged, not drawn), guarded branches in the virtual sim |
-
-Gate metadata and per-state view models get demos once the engine release that
-adds them (arisros/fate#13) is tagged. Until then the vendored engine is a
-pre-release copy, so the module builds with `-mod=vendor` only.
+| `order` | parallel lanes, self-loops, layout, one view model per lane |
+| `ticket` | global events (badged, not drawn), named and gated guards, guarded branches in the virtual sim, a view model in review |
 
 After changing a demo, run `make fixtures` to regenerate `testdata/snapshots` and
 `ui/src/graph/__fixtures__`; `go test` fails while they are stale.

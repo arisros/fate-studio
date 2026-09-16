@@ -1,5 +1,5 @@
 // Mirrors the Go backend contracts:
-//   Graph/GraphNode/GraphEdge  -> vendor/github.com/arisros/fate/graph.go
+//   Graph/GraphNode/GraphEdge  -> vendor/github.com/arisros/fate/render/graph.go
 //   LiveSnapshot/Timer/Invoke  -> live.go
 //   SimFrame                   -> simulator.go
 //   /api/machines              -> server.go (new endpoint)
@@ -12,7 +12,7 @@ export type NodeType =
   | "history";
 
 // CondField describes one predicate that a Guard checks on the actor context.
-// Mirrors vendor/github.com/arisros/fate/cond_meta.go.
+// Mirrors fate's cond_meta.go.
 export interface CondField {
   path: string; // "$.score" or "$.customer.name"
   op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "truthy" | "falsy";
@@ -37,7 +37,7 @@ export interface GraphNode {
   history?: "shallow" | "deep";
   entry?: string[];
   exit?: string[];
-  uiStateSchema?: Record<string, unknown>; // JSON Schema for UIState return type
+  ui_state_schema?: Record<string, unknown>; // JSON Schema of the state's view model
 }
 
 export interface GraphEdge {
@@ -48,7 +48,7 @@ export interface GraphEdge {
   guard?: string;
   actions?: string[];
   internal?: boolean;
-  condMeta?: CondMeta; // gate metadata for the studio inspector
+  cond_meta?: CondMeta; // what the guard checks, when the machine declares it
 }
 
 export interface Graph {
@@ -73,7 +73,8 @@ export interface LiveSnapshot {
   context: unknown; // raw JSON
   status: string; // "running" | "stopped" | "done" | "error"
   ascii: string;
-  uiState?: unknown; // per-state payload from Go StateNodeConfig.UIState callback
+  ui_state?: Record<string, unknown>; // view models keyed by the declaring state's path
+  ui_state_error?: string;
   // Sendable from the active configuration. A proxied fate httphandler stream
   // omits it, and the UI then derives the list from the graph.
   events?: string[];

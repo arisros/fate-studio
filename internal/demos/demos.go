@@ -55,8 +55,8 @@ func All() []Demo {
 		demoFor("counter", "Live context: increment, decrement, and reset a counter.", Counter, CounterDispatch),
 		demoFor("timeout", "Delayed transition: a pending after-timer you fire from the studio.", Timeout, TimeoutDispatch),
 		demoFor("fetch", "Invocation: a pending request you resolve or reject from the studio.", Fetch, FetchDispatch),
-		demoFor("order", "Parallel lanes: payment, fulfillment, and support progress independently.", Order, namedDispatch(Order)),
-		demoFor("ticket", "Global events: CANCEL from every step and ROUTE to three queues are badged, not drawn.", Ticket, namedDispatch(Ticket)),
+		demoFor("order", "Parallel lanes progress independently; two of them publish a view model.", Order, namedDispatch(Order)),
+		demoFor("ticket", "Global events are badged, ROUTE is gated on the category, and review shows a view model.", Ticket, namedDispatch(Ticket)),
 	}
 }
 

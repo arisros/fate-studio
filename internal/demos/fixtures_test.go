@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arisros/fate"
+	"github.com/arisros/fate/render"
 
 	"github.com/arisros/fate-studio/internal/demos"
 )
@@ -22,7 +22,7 @@ func TestFixtures(t *testing.T) {
 	for _, d := range demos.All() {
 		desc := d.Descriptor()
 		check(t, filepath.Join(root, "testdata", "snapshots", d.Name+".json"), desc)
-		check(t, filepath.Join(root, "ui", "src", "graph", "__fixtures__", d.Name+".graph.json"), fate.RenderGraphJSON(desc))
+		check(t, filepath.Join(root, "ui", "src", "graph", "__fixtures__", d.Name+".graph.json"), render.GraphJSON(desc))
 	}
 }
 

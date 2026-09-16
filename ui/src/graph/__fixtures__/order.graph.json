@@ -16,7 +16,22 @@
       "path": "order.fulfillment",
       "type": "compound",
       "parent": "s_order",
-      "initial": false
+      "initial": false,
+      "ui_state_schema": {
+        "properties": {
+          "lane": {
+            "type": "string"
+          },
+          "updates": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lane",
+          "updates"
+        ],
+        "type": "object"
+      }
     },
     {
       "id": "s_order_fulfillment_delivered",
@@ -56,7 +71,22 @@
       "path": "order.payment",
       "type": "compound",
       "parent": "s_order",
-      "initial": false
+      "initial": false,
+      "ui_state_schema": {
+        "properties": {
+          "lane": {
+            "type": "string"
+          },
+          "updates": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lane",
+          "updates"
+        ],
+        "type": "object"
+      }
     },
     {
       "id": "s_order_payment_authorized",
@@ -136,7 +166,7 @@
       "event": "STATUS_UPDATE",
       "target": "s_order_fulfillment_packing",
       "actions": [
-        ""
+        "countUpdate"
       ],
       "internal": true
     },
@@ -164,7 +194,7 @@
       "event": "STATUS_UPDATE",
       "target": "s_order_payment_authorized",
       "actions": [
-        ""
+        "countUpdate"
       ],
       "internal": true
     },
