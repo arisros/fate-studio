@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/render"
 )
 
 // LiveInstance is a type-erased statechart actor the simulator drives
@@ -67,14 +68,17 @@ type InvokeInfo struct {
 // carries what changes per event (active path, context, status). The studio
 // re-highlights the already-laid-out canvas — no re-layout per event.
 type LiveSnapshot struct {
-	Path        string          `json:"path"`
-	Context     json.RawMessage `json:"context"`
-	Status      sc.ActorStatus  `json:"status"`
-	ASCII       string          `json:"ascii"`             // ASCII diagram (CLI / static view)
-	UIState     json.RawMessage `json:"uiState,omitempty"` // per-state payload from StateNodeConfig.UIState
-	Events      []string        `json:"events"`
-	Timers      []TimerInfo     `json:"timers,omitempty"`
-	Invocations []InvokeInfo    `json:"invocations,omitempty"`
+	Path    string          `json:"path"`
+	Context json.RawMessage `json:"context"`
+	Status  sc.ActorStatus  `json:"status"`
+	ASCII   string          `json:"ascii"` // ASCII diagram (CLI / static view)
+	// UIState holds the active states' view models keyed by state path, and
+	// UIStateError why they could not be built. Same keys as fate's httphandler.
+	UIState      map[string]json.RawMessage `json:"ui_state,omitempty"`
+	UIStateError string                     `json:"ui_state_error,omitempty"`
+	Events       []string                   `json:"events"`
+	Timers       []TimerInfo                `json:"timers,omitempty"`
+	Invocations  []InvokeInfo               `json:"invocations,omitempty"`
 }
 
 // liveActor wraps a typed Actor[Ctx, Evt] as a LiveInstance.
@@ -146,17 +150,21 @@ func (e *liveActor[Ctx, Evt]) Snapshot() LiveSnapshot {
 	d := e.descriptor()
 	activePath := snap.Value.Path()
 	hl := highlightForActivePath(activePath)
-	ctx := snap.Context
-	return LiveSnapshot{
+	out := LiveSnapshot{
 		Path:        activePath,
 		Context:     ctxBytes,
 		Status:      snap.Status,
-		ASCII:       sc.RenderASCII(d, sc.RenderOptions{Highlight: hl}),
-		UIState:     e.machine.ComputeUIState(activePath, &ctx),
+		ASCII:       render.ASCII(d, render.Options{Highlight: hl}),
 		Events:      e.AvailableEvents(),
 		Timers:      e.PendingTimers(),
 		Invocations: e.PendingInvocations(),
 	}
+	if views, err := e.machine.UIState(snap.Value, snap.Context); err != nil {
+		out.UIStateError = err.Error()
+	} else {
+		out.UIState = views
+	}
+	return out
 }
 
 func (e *liveActor[Ctx, Evt]) PendingTimers() []TimerInfo {
@@ -169,7 +177,9 @@ func (e *liveActor[Ctx, Evt]) PendingTimers() []TimerInfo {
 }
 
 func (e *liveActor[Ctx, Evt]) FireTimer(id string) error {
-	e.actor.FireTimer(sc.TimerID(id))
+	if !e.actor.FireTimer(sc.TimerID(id)) {
+		return fmt.Errorf("timer %q is not armed", id)
+	}
 	return nil
 }
 
@@ -189,7 +199,9 @@ func (e *liveActor[Ctx, Evt]) ResolveInvocation(id, outputJSON string) error {
 			return fmt.Errorf("output is not valid JSON: %w", err)
 		}
 	}
-	e.actor.ResolveInvocation(sc.InvokeID(id), out)
+	if !e.actor.ResolveInvocation(sc.InvokeID(id), out) {
+		return fmt.Errorf("invocation %q is not pending", id)
+	}
 	return nil
 }
 
@@ -197,7 +209,9 @@ func (e *liveActor[Ctx, Evt]) RejectInvocation(id, errMsg string) error {
 	if errMsg == "" {
 		errMsg = "rejected from studio"
 	}
-	e.actor.RejectInvocation(sc.InvokeID(id), errors.New(errMsg))
+	if !e.actor.RejectInvocation(sc.InvokeID(id), errors.New(errMsg)) {
+		return fmt.Errorf("invocation %q is not pending", id)
+	}
 	return nil
 }
 

@@ -179,7 +179,7 @@ export class VirtualSimulator {
               targetPath,
               label,
               isSelfLoop: isSelf,
-              condMeta: edge.condMeta,
+              condMeta: edge.cond_meta,
             });
           }
         }

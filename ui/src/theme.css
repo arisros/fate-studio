@@ -279,3 +279,7 @@ button { font-family: var(--ui); }
   .sim-body { flex-direction: column; }
   .inspector { width: auto; flex: 0 0 auto; border-left: none; border-top: 1px solid var(--line); max-height: 45%; }
 }
+
+.ui-state + .ui-state {
+  margin-top: 10px;
+}

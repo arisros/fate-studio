@@ -18,7 +18,7 @@
       "event": "DEC",
       "target": "s_active",
       "actions": [
-        ""
+        "assign"
       ]
     },
     {
@@ -27,7 +27,7 @@
       "event": "INC",
       "target": "s_active",
       "actions": [
-        ""
+        "assign"
       ]
     },
     {
@@ -36,7 +36,7 @@
       "event": "RESET",
       "target": "s_active",
       "actions": [
-        ""
+        "assign"
       ]
     }
   ]
