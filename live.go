@@ -70,7 +70,8 @@ type LiveSnapshot struct {
 	Path        string          `json:"path"`
 	Context     json.RawMessage `json:"context"`
 	Status      sc.ActorStatus  `json:"status"`
-	ASCII       string          `json:"ascii"` // ASCII diagram (CLI / static view)
+	ASCII       string          `json:"ascii"`             // ASCII diagram (CLI / static view)
+	UIState     json.RawMessage `json:"uiState,omitempty"` // per-state payload from StateNodeConfig.UIState
 	Events      []string        `json:"events"`
 	Timers      []TimerInfo     `json:"timers,omitempty"`
 	Invocations []InvokeInfo    `json:"invocations,omitempty"`
@@ -83,16 +84,12 @@ type liveActor[Ctx any, Evt any] struct {
 	dispatch func(name string) (Evt, error)
 	describe func() sc.MachineDescriptor
 
-	// descOnce memoises describe(). Every snapshot needs the descriptor (to
-	// render ASCII and to enumerate events), and describe is often a closure
-	// that rebuilds the whole machine — calling it per SSE frame rebuilt the
-	// machine several times per event. The topology a descriptor reports is
-	// fixed for a machine's lifetime, so one call is enough.
+	// describe often rebuilds the whole machine, and every snapshot needs the
+	// descriptor; a machine's topology is fixed, so one call is enough.
 	descOnce sync.Once
 	desc     sc.MachineDescriptor
 }
 
-// descriptor returns the memoised MachineDescriptor. See descOnce.
 func (e *liveActor[Ctx, Evt]) descriptor() sc.MachineDescriptor {
 	e.descOnce.Do(func() { e.desc = e.describe() })
 	return e.desc
@@ -149,11 +146,13 @@ func (e *liveActor[Ctx, Evt]) Snapshot() LiveSnapshot {
 	d := e.descriptor()
 	activePath := snap.Value.Path()
 	hl := highlightForActivePath(activePath)
+	ctx := snap.Context
 	return LiveSnapshot{
 		Path:        activePath,
 		Context:     ctxBytes,
 		Status:      snap.Status,
 		ASCII:       sc.RenderASCII(d, sc.RenderOptions{Highlight: hl}),
+		UIState:     e.machine.ComputeUIState(activePath, &ctx),
 		Events:      e.AvailableEvents(),
 		Timers:      e.PendingTimers(),
 		Invocations: e.PendingInvocations(),
@@ -210,21 +209,14 @@ func (e *liveActor[Ctx, Evt]) AvailableEvents() []string {
 	d := e.descriptor()
 	path := e.actor.Snapshot().Value.Path()
 	seen := map[string]struct{}{}
-	evts := []string{} // never nil: the field marshals as [] rather than null
-	// Parallel paths look like "a.x | b.y"; gather events from each region.
+	evts := []string{} // marshals as [] rather than null
 	for _, region := range strings.Split(path, " | ") {
-		// The engine selects a transition by walking the active leaf up
-		// through its ancestors (see selectTransitions), so an event declared
-		// on a compound parent is sendable from any descendant. Collecting
-		// only the leaf's own On map hid every such event from the studio.
+		// The engine resolves an event by walking the active leaf up through
+		// its ancestors, so events declared on a compound parent are sendable.
 		for _, node := range descriptorChainAt(d, strings.TrimSpace(region)) {
 			for k := range node.On {
-				// "*" is the engine's catch-all key. It is dispatchable by
-				// name, but offering it as a button would be meaningless, so
-				// the list stays limited to named events. That makes the list
-				// complete for named transitions but not exhaustive: a state
-				// with an "*" entry anywhere on its chain also accepts events
-				// this list does not mention.
+				// "*" is the catch-all key: dispatchable, but not an event to offer
+				// as a button, so a state with "*" accepts more than this list.
 				if k == "*" {
 					continue
 				}
@@ -258,14 +250,8 @@ func highlightForActivePath(path string) map[string]rune {
 	return h
 }
 
-// descriptorChainAt walks a MachineDescriptor by dot-path and returns every
-// node along the way — the addressed node and each of its ancestors, outermost
-// first. Callers that need the leaf alone take the last element.
-//
-// The engine resolves an event against this same chain, so the studio has to
-// reproduce the walk: the descriptor records a transition only on the node that
-// declares it, and there is no engine API that enumerates the events reachable
-// from a state. Returns nil if the path does not resolve.
+// descriptorChainAt returns the node at a dot-path and each of its ancestors,
+// outermost first, or nil if the path does not resolve.
 func descriptorChainAt(d sc.MachineDescriptor, path string) []sc.StateNodeDescriptor {
 	if path == "" {
 		return nil
