@@ -392,6 +392,28 @@ func (a *Actor[Ctx, Evt]) recordHistoryLocked(parent *stateNode[Ctx, Evt]) {
 // The bounded loop guards against ill-formed configurations that could
 // otherwise loop forever (e.g. onDone targeting a final state of the same
 // parent).
+// allRegionsDone reports whether every active leaf that is a descendant of
+// `parallel` is in a final state — i.e., all regions have completed.
+func allRegionsDone[Ctx any, Evt any](root *stateNode[Ctx, Evt], v StateValue, parallel *stateNode[Ctx, Evt]) bool {
+	leaves := resolveLeaves[Ctx, Evt](root, v)
+	for _, l := range leaves {
+		desc := false
+		for cur := l; cur != nil; cur = cur.parent {
+			if cur == parallel {
+				desc = true
+				break
+			}
+		}
+		if !desc {
+			continue
+		}
+		if l.typ != NodeFinal {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *Actor[Ctx, Evt]) settleFinalLocked(triggerEvt Evt) {
 	for i := 0; i < maxQueueDrain; i++ {
 		leaf := resolveLeaf[Ctx, Evt](a.machine.root, a.value)
@@ -422,6 +444,43 @@ func (a *Actor[Ctx, Evt]) settleFinalLocked(triggerEvt Evt) {
 			if parent.parent == nil || parent.parent.name == "" {
 				a.captureOutputLocked(leaf)
 				a.status = StatusDone
+				return
+			}
+			// XState parallel semantics: when a compound region inside a
+			// parallel reaches a final state and ALL other regions have also
+			// reached final states, the parallel node itself is done.
+			if parent.parent.typ == NodeParallel {
+				parallel := parent.parent
+				if allRegionsDone[Ctx, Evt](a.machine.root, a.value, parallel) {
+					// Check parallel's own onDone candidates.
+					var parChosen TransitionConfig[Ctx, Evt]
+					parMatched := false
+					for _, t := range parallel.onDone {
+						if transitionPasses(t, a.ctx, triggerEvt, a.value) {
+							parChosen = t
+							parMatched = true
+							break
+						}
+					}
+					if parMatched {
+						target := resolveTarget(parallel, parChosen.Target)
+						if target == nil {
+							return
+						}
+						target = a.resolveHistoryRedirect(target)
+						if target == nil {
+							return
+						}
+						a.runTransitionLocked(parallel, target, parChosen, triggerEvt)
+						continue // settle loop — may land in another final state
+					}
+					// No matching onDone; escalate to parallel's parent.
+					pp := parallel.parent
+					if pp == nil || pp.name == "" {
+						a.captureOutputLocked(leaf)
+						a.status = StatusDone
+					}
+				}
 			}
 			return
 		}
