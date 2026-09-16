@@ -1,0 +1,58 @@
+{
+  "id": "pipeline",
+  "initial": "s_ingest",
+  "nodes": [
+    {
+      "id": "s_done",
+      "label": "done",
+      "path": "done",
+      "type": "final",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_ingest",
+      "label": "ingest",
+      "path": "ingest",
+      "type": "atomic",
+      "parent": "",
+      "initial": true
+    },
+    {
+      "id": "s_transform",
+      "label": "transform",
+      "path": "transform",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    },
+    {
+      "id": "s_validate",
+      "label": "validate",
+      "path": "validate",
+      "type": "atomic",
+      "parent": "",
+      "initial": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_ingest__NEXT__1",
+      "source": "s_ingest",
+      "event": "NEXT",
+      "target": "s_validate"
+    },
+    {
+      "id": "s_transform__NEXT__1",
+      "source": "s_transform",
+      "event": "NEXT",
+      "target": "s_done"
+    },
+    {
+      "id": "s_validate__NEXT__1",
+      "source": "s_validate",
+      "event": "NEXT",
+      "target": "s_transform"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "id": "editor",
+  "initial": "s_session",
+  "nodes": [
+    {
+      "id": "s_session",
+      "label": "session",
+      "path": "session",
+      "type": "compound",
+      "parent": "",
+      "initial": true
+    },
+    {
+      "id": "s_session_done",
+      "label": "done",
+      "path": "session.done",
+      "type": "final",
+      "parent": "s_session",
+      "initial": false
+    },
+    {
+      "id": "s_session_editing",
+      "label": "editing",
+      "path": "session.editing",
+      "type": "compound",
+      "parent": "s_session",
+      "initial": true
+    },
+    {
+      "id": "s_session_editing_draft",
+      "label": "draft",
+      "path": "session.editing.draft",
+      "type": "atomic",
+      "parent": "s_session_editing",
+      "initial": true
+    },
+    {
+      "id": "s_session_editing_hist",
+      "label": "hist",
+      "path": "session.editing.hist",
+      "type": "history",
+      "parent": "s_session_editing",
+      "initial": false,
+      "history": "deep"
+    },
+    {
+      "id": "s_session_editing_publishing",
+      "label": "publishing",
+      "path": "session.editing.publishing",
+      "type": "atomic",
+      "parent": "s_session_editing",
+      "initial": false
+    },
+    {
+      "id": "s_session_editing_review",
+      "label": "review",
+      "path": "session.editing.review",
+      "type": "atomic",
+      "parent": "s_session_editing",
+      "initial": false
+    },
+    {
+      "id": "s_session_suspended",
+      "label": "suspended",
+      "path": "session.suspended",
+      "type": "atomic",
+      "parent": "s_session",
+      "initial": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "s_session_editing__SUSPEND__1",
+      "source": "s_session_editing",
+      "event": "SUSPEND",
+      "target": "s_session_suspended"
+    },
+    {
+      "id": "s_session_editing_draft__NEXT__1",
+      "source": "s_session_editing_draft",
+      "event": "NEXT",
+      "target": "s_session_editing_review"
+    },
+    {
+      "id": "s_session_editing_publishing__NEXT__1",
+      "source": "s_session_editing_publishing",
+      "event": "NEXT",
+      "target": "s_session_done"
+    },
+    {
+      "id": "s_session_editing_review__NEXT__1",
+      "source": "s_session_editing_review",
+      "event": "NEXT",
+      "target": "s_session_editing_publishing"
+    },
+    {
+      "id": "s_session_suspended__RESUME__1",
+      "source": "s_session_suspended",
+      "event": "RESUME",
+      "target": "s_session_editing_hist"
+    }
+  ]
+}

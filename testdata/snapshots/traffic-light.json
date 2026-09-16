@@ -1,0 +1,37 @@
+{
+  "id": "traffic-light",
+  "initial": "red",
+  "context": {},
+  "states": {
+    "green": {
+      "type": "atomic",
+      "on": {
+        "NEXT": [
+          {
+            "target": "yellow"
+          }
+        ]
+      }
+    },
+    "red": {
+      "type": "atomic",
+      "on": {
+        "NEXT": [
+          {
+            "target": "green"
+          }
+        ]
+      }
+    },
+    "yellow": {
+      "type": "atomic",
+      "on": {
+        "NEXT": [
+          {
+            "target": "red"
+          }
+        ]
+      }
+    }
+  }
+}
