@@ -1,43 +1,44 @@
-package fate
+package render
 
 // Graph JSON — a resolved node/edge model for the studio's self-hosted
 // Stately-style canvas. The browser lays this out with elkjs and renders
 // state cards + edges; it does not need to re-resolve targets (done here).
-//
-// Reuses the descriptor index + target resolver from mermaid.go.
 
 import (
 	"encoding/json"
 	"sort"
+
+	"github.com/arisros/fate"
 )
 
 // GraphNode is one state in the graph. Hierarchy is expressed via Parent
 // (the qualified id of the enclosing compound/parallel node, "" for top level).
 type GraphNode struct {
-	ID            string          `json:"id"`      // qualified node id (nodeID of dot-path)
-	Label         string          `json:"label"`   // leaf name (display)
-	Path          string          `json:"path"`    // dot-path (for active-state matching)
-	Type          string          `json:"type"`    // atomic|compound|parallel|final|history
-	Parent        string          `json:"parent"`  // parent qualified id, "" if top level
-	Initial       bool            `json:"initial"` // is its parent's initial child
-	History       string          `json:"history,omitempty"`
-	Entry         []string        `json:"entry,omitempty"`
-	Exit          []string        `json:"exit,omitempty"`
-	UIStateSchema json.RawMessage `json:"uiStateSchema,omitempty"` // JSON Schema for UIState; nil when not configured
+	ID      string   `json:"id"`      // qualified node id (nodeID of dot-path)
+	Label   string   `json:"label"`   // leaf name (display)
+	Path    string   `json:"path"`    // dot-path (for active-state matching)
+	Type    string   `json:"type"`    // atomic|compound|parallel|final|history
+	Parent  string   `json:"parent"`  // parent qualified id, "" if top level
+	Initial bool     `json:"initial"` // is its parent's initial child
+	History string   `json:"history,omitempty"`
+	Entry   []string `json:"entry,omitempty"`
+	Exit    []string `json:"exit,omitempty"`
+	// UIStateSchema is the JSON Schema of the state's UIState view model.
+	UIStateSchema json.RawMessage `json:"ui_state_schema,omitempty"`
 }
 
 // GraphEdge is one transition. Source/Target are qualified node ids; Event is
 // the triggering event (the studio anchors the edge to the source node's
 // matching event row, Stately-style).
 type GraphEdge struct {
-	ID       string    `json:"id"`
-	Source   string    `json:"source"`
-	Event    string    `json:"event"`
-	Target   string    `json:"target"`
-	Guard    string    `json:"guard,omitempty"`
-	Actions  []string  `json:"actions,omitempty"`
-	Internal bool      `json:"internal,omitempty"`
-	CondMeta *CondMeta `json:"condMeta,omitempty"` // gate metadata for the studio inspector
+	ID       string         `json:"id"`
+	Source   string         `json:"source"`
+	Event    string         `json:"event"`
+	Target   string         `json:"target"`
+	Guard    string         `json:"guard,omitempty"`
+	Actions  []string       `json:"actions,omitempty"`
+	Internal bool           `json:"internal,omitempty"`
+	CondMeta *fate.CondMeta `json:"cond_meta,omitempty"`
 }
 
 // Graph is the full resolved structure for one machine.
@@ -48,16 +49,16 @@ type Graph struct {
 	Edges   []GraphEdge `json:"edges"`
 }
 
-// RenderGraphJSON converts a MachineDescriptor into a resolved Graph.
-func RenderGraphJSON(d MachineDescriptor) Graph {
+// GraphJSON converts a MachineDescriptor into a resolved Graph.
+func GraphJSON(d fate.MachineDescriptor) Graph {
 	idx := indexDescriptor(d)
 	g := Graph{ID: d.ID}
 	if d.Initial != "" {
 		g.Initial = nodeID(d.Initial)
 	}
 
-	var walk func(name string, node StateNodeDescriptor, path, parentID, parentInitial string)
-	walk = func(name string, node StateNodeDescriptor, path, parentID, parentInitial string) {
+	var walk func(name string, node fate.StateNodeDescriptor, path, parentID, parentInitial string)
+	walk = func(name string, node fate.StateNodeDescriptor, path, parentID, parentInitial string) {
 		n := GraphNode{
 			ID:            nodeID(path),
 			Label:         name,
@@ -72,7 +73,6 @@ func RenderGraphJSON(d MachineDescriptor) Graph {
 		}
 		g.Nodes = append(g.Nodes, n)
 
-		// Edges out of this node (On + OnDone).
 		events := make([]string, 0, len(node.On))
 		for ev := range node.On {
 			events = append(events, ev)
@@ -88,7 +88,6 @@ func RenderGraphJSON(d MachineDescriptor) Graph {
 			g.Edges = append(g.Edges, edgeFor(path, "onDone", t, idx, &ei))
 		}
 
-		// Recurse into children.
 		for _, k := range sortedStateKeys(node.States) {
 			walk(k, node.States[k], joinDotPath(path, k), n.ID, node.Initial)
 		}
@@ -100,7 +99,7 @@ func RenderGraphJSON(d MachineDescriptor) Graph {
 	return g
 }
 
-func edgeFor(srcPath, event string, t TransitionDescriptor, idx descriptorIndex, ei *int) GraphEdge {
+func edgeFor(srcPath, event string, t fate.TransitionDescriptor, idx descriptorIndex, ei *int) GraphEdge {
 	tgtPath := resolveDescriptorTarget(srcPath, t.Target, idx)
 	*ei++
 	return GraphEdge{

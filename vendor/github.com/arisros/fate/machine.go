@@ -1,8 +1,9 @@
 package fate
 
 import (
-	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -91,16 +92,9 @@ type StateNodeConfig[Ctx any, Evt any] struct {
 	// XState's final-state output.
 	Output func(ctx Ctx) any
 
-	// UIState, if non-nil, is called whenever a snapshot is taken while this
-	// state is active. Receives the typed context pointer; return anything
-	// JSON-serializable. The studio surfaces the result in the inspector panel.
-	// Strong typing is enforced by the Go compiler — no interface{} casting needed.
-	UIState func(ctx *Ctx) any
-
-	// UIStateSchema, when non-nil, is a JSON Schema describing the shape of the
-	// UIState return value. Generate it automatically with UIStateOf; the studio
-	// uses it to render structured field-by-field display instead of a raw JSON blob.
-	UIStateSchema json.RawMessage
+	// UIState projects the context into a view model while this state is
+	// active. Build it with UIStateOf. See Machine.UIState.
+	UIState *UIState[Ctx]
 }
 
 // TransitionConfig declares one possible transition for an event.
@@ -120,6 +114,12 @@ type TransitionConfig[Ctx any, Evt any] struct {
 	// consulted. A Guard is a pure predicate over context and event.
 	Guard Guard[Ctx, Evt]
 
+	// GuardName labels Guard in a [MachineDescriptor], and through it in every
+	// rendered diagram. Guard is a func value with no identity a descriptor can
+	// recover, so a guard is unnamed unless it is named here. Optional; an
+	// unnamed guard renders as "".
+	GuardName string
+
 	// Cond, if non-nil, is a structural condition over the active state
 	// configuration (see Cond / StateIn / InState). When both Guard and Cond
 	// are set, the transition is selected only if both pass. Use Cond for
@@ -130,10 +130,8 @@ type TransitionConfig[Ctx any, Evt any] struct {
 	// transition fires. Order: declaration order.
 	Actions []Action[Ctx, Evt]
 
-	// CondMeta, if non-nil, annotates the Guard with informational metadata
-	// about the context fields it checks. The studio renders it as a live Gate
-	// panel. It does NOT affect whether the transition fires — Guard/Cond remain
-	// the sole runtime predicates.
+	// CondMeta documents the context fields Guard checks, for tooling only.
+	// It does not change whether the transition fires. Build it with Gates.
 	CondMeta *CondMeta
 }
 
@@ -171,11 +169,7 @@ type stateNode[Ctx any, Evt any] struct {
 	// outputFn builds the machine output when this final state completes at the
 	// top level. nil unless typ == NodeFinal and an Output fn was configured.
 	outputFn func(Ctx) any
-	// uiState computes per-state UI data for the studio inspector. nil when not configured.
-	uiState func(ctx *Ctx) any
-	// uiStateSchema is the JSON Schema for the uiState return type, pre-computed
-	// at machine construction time (typically via UIStateOf). nil when not configured.
-	uiStateSchema json.RawMessage
+	uiState  *UIState[Ctx]
 }
 
 // afterEntry is one delay bucket of a state's delayed transitions.
@@ -186,56 +180,6 @@ type afterEntry[Ctx any, Evt any] struct {
 
 // ID returns the machine's configured identifier.
 func (m *Machine[Ctx, Evt]) ID() string { return m.id }
-
-// ComputeUIState returns the UIState JSON for the currently active state(s),
-// or nil if no active state has a UIState function defined.
-// activePath uses the same dot-path format as LiveSnapshot.Path; parallel
-// machines use " | "-separated region paths (e.g. "a.x | b.y").
-// When multiple parallel regions both have UIState, results are merged into a
-// map keyed by region path.
-func (m *Machine[Ctx, Evt]) ComputeUIState(activePath string, ctx *Ctx) json.RawMessage {
-	type regionResult struct {
-		path string
-		val  any
-	}
-	var results []regionResult
-	for _, region := range strings.Split(activePath, " | ") {
-		region = strings.TrimSpace(region)
-		if region == "" {
-			continue
-		}
-		segs := strings.Split(region, ".")
-		node, ok := m.root.children[segs[0]]
-		if !ok {
-			continue
-		}
-		for _, seg := range segs[1:] {
-			child, ok := node.children[seg]
-			if !ok {
-				node = nil
-				break
-			}
-			node = child
-		}
-		if node == nil || node.uiState == nil {
-			continue
-		}
-		results = append(results, regionResult{path: region, val: node.uiState(ctx)})
-	}
-	if len(results) == 0 {
-		return nil
-	}
-	if len(results) == 1 {
-		b, _ := json.Marshal(results[0].val)
-		return b
-	}
-	merged := make(map[string]any, len(results))
-	for _, r := range results {
-		merged[r.path] = r.val
-	}
-	b, _ := json.Marshal(merged)
-	return b
-}
 
 // initialContext returns a fresh copy of the configured starting context.
 // Used by NewActor.
@@ -385,12 +329,14 @@ func buildNode[Ctx any, Evt any](
 		defaultTgt:   cfg.Default,
 		after:        buildAfterEntries(cfg.After),
 		invokes:      cfg.Invoke,
-		outputFn:      cfg.Output,
-		uiState:       cfg.UIState,
-		uiStateSchema: cfg.UIStateSchema,
+		outputFn:     cfg.Output,
+		uiState:      cfg.UIState,
 	}
 
 	if err := validateInvocations(strings.Join(path, "."), cfg.Invoke); err != nil {
+		return nil, err
+	}
+	if err := sealNode(node, strings.Join(path, "."), cfg); err != nil {
 		return nil, err
 	}
 
@@ -457,6 +403,52 @@ func validateInvocations[Ctx any, Evt any](statePath string, invs []Invocation[C
 		seen[inv.ID] = struct{}{}
 	}
 	return nil
+}
+
+// sealNode validates the node's tooling metadata and gives the node its own
+// copies of the transitions that carry CondMeta.
+func sealNode[Ctx any, Evt any](node *stateNode[Ctx, Evt], statePath string, cfg StateNodeConfig[Ctx, Evt]) error {
+	if cfg.UIState != nil && cfg.UIState.fn == nil {
+		return fmt.Errorf("%w: state %q has a UIState not built with UIStateOf", ErrInvalidConfig, statePath)
+	}
+	for _, delay := range slices.Sorted(maps.Keys(cfg.After)) {
+		for i, t := range cfg.After[delay] {
+			if t.CondMeta != nil {
+				return fmt.Errorf("%w: state %q after %s candidate %d has CondMeta, which is only published for On and OnDone transitions", ErrInvalidConfig, statePath, delay, i)
+			}
+		}
+	}
+	if len(cfg.On) > 0 {
+		node.on = make(map[string][]TransitionConfig[Ctx, Evt], len(cfg.On))
+		for _, event := range slices.Sorted(maps.Keys(cfg.On)) {
+			ts, err := sealTransitions(fmt.Sprintf("state %q event %q", statePath, event), cfg.On[event])
+			if err != nil {
+				return err
+			}
+			node.on[event] = ts
+		}
+	}
+	ts, err := sealTransitions(fmt.Sprintf("state %q onDone", statePath), cfg.OnDone)
+	if err != nil {
+		return err
+	}
+	node.onDone = ts
+	return nil
+}
+
+func sealTransitions[Ctx any, Evt any](where string, ts []TransitionConfig[Ctx, Evt]) ([]TransitionConfig[Ctx, Evt], error) {
+	if ts == nil {
+		return nil, nil
+	}
+	out := slices.Clone(ts)
+	for i := range out {
+		meta, err := out[i].CondMeta.seal(fmt.Sprintf("%s candidate %d", where, i))
+		if err != nil {
+			return nil, err
+		}
+		out[i].CondMeta = meta
+	}
+	return out, nil
 }
 
 // validateTargets walks every node and confirms each transition's Target
