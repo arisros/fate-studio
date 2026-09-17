@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="fate-studio">
+  <title>fate-studio</title>
+  <rect width="64" height="64" rx="12" fill="#150f23"/>
+  <!-- inactive states and the transition not taken -->
+  <g fill="none" stroke="#6a5fc1" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M32 5 41 14 32 23 23 14Z"/>
+    <path d="M49 37 58 46 49 55 40 46Z"/>
+  </g>
+  <circle cx="32" cy="14" r="2.5" fill="#6a5fc1"/>
+  <line x1="36.7" y1="22.8" x2="42.43" y2="33.63" stroke="#6a5fc1" stroke-width="2" stroke-linecap="round"/>
+  <path d="M45.01 38.49 45.26 32.13 39.60 35.13Z" fill="#6a5fc1"/>
+  <!-- the transition being taken, into the active state -->
+  <line x1="27.3" y1="22.8" x2="21.57" y2="33.63" stroke="#c2ef4e" stroke-width="2" stroke-linecap="round"/>
+  <path d="M18.99 38.49 18.74 32.13 24.40 35.13Z" fill="#c2ef4e"/>
+  <path d="M15 37 24 46 15 55 6 46Z" fill="#c2ef4e" stroke="#c2ef4e" stroke-width="2.5" stroke-linejoin="round"/>
+</svg>

@@ -1,20 +1,48 @@
-# fate-studio
+<p align="center">
+  <img src="docs/logo.svg" width="96" height="96" alt="fate-studio">
+</p>
 
-A self-hosted studio for [fate](https://github.com/arisros/fate) statecharts: a
-chart viewer and a live simulator you drive in the browser.
+<h1 align="center">fate-studio</h1>
 
-Open a machine to see its diagram, then step through it: send events, fire
-delayed transitions, resolve or reject invocations, and watch the active state
-update in real time over Server-Sent Events. Snapshots inspect, diff, import, and
-export; a timeline records each step; the canvas lays itself out with elkjs.
+<p align="center">A chart viewer and live simulator for fate statecharts.</p>
 
-It is a separate project from the engine on purpose. The engine has no
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/arisros/fate-studio"><img src="https://pkg.go.dev/badge/github.com/arisros/fate-studio.svg" alt="Go Reference"></a>
+  <a href="https://github.com/arisros/fate-studio/actions/workflows/ci.yml"><img src="https://github.com/arisros/fate-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://goreportcard.com/report/github.com/arisros/fate-studio"><img src="https://goreportcard.com/badge/github.com/arisros/fate-studio" alt="Go Report Card"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
+
+<p align="center">
+  <a href="https://fate-studio.arisjirat.com">Live studio</a> &middot;
+  <a href="https://github.com/arisros/fate">Engine</a> &middot;
+  <a href="https://fate.arisjirat.com">Engine documentation</a> &middot;
+  <a href="./DESIGN.md">Design language</a>
+</p>
+
+---
+
+Open a [fate](https://github.com/arisros/fate) machine to see its diagram, then
+step through it: send events, fire delayed transitions, resolve or reject
+invocations, and watch the active state update in real time over Server-Sent
+Events. Snapshots inspect, diff, import, and export; a timeline records each
+step; the canvas lays itself out with elkjs.
+
+The studio is a separate project from the engine on purpose. The engine has no
 dependencies; the studio needs a web server. Keeping them apart means
 `go get github.com/arisros/fate` never pulls in `net/http` or anything else.
 
 A hosted instance runs at
-[fate-studio.arisjirat.com](https://fate-studio.arisjirat.com). The engine's own
-documentation is at [fate.arisjirat.com](https://fate.arisjirat.com).
+[fate-studio.arisjirat.com](https://fate-studio.arisjirat.com).
+
+## Contents
+
+- [Run the demo server](#run-the-demo-server)
+- [Demos](#demos)
+- [Embed it in your own program](#embed-it-in-your-own-program)
+- [Design](#design)
+- [Tests](#tests)
+- [License](#license)
 
 ## Run the demo server
 
