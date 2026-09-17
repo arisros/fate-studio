@@ -12,6 +12,10 @@ It is a separate project from the engine on purpose. The engine has no
 dependencies; the studio needs a web server. Keeping them apart means
 `go get github.com/arisros/fate` never pulls in `net/http` or anything else.
 
+A hosted instance runs at
+[fate-studio.arisjirat.com](https://fate-studio.arisjirat.com). The engine's own
+documentation is at [fate.arisjirat.com](https://fate.arisjirat.com).
+
 ## Run the demo server
 
 ```sh
