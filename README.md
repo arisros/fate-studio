@@ -139,6 +139,14 @@ cd ui && npm test          # UI unit tests
 cd ui && npx playwright test   # renders every demo, at / and mounted under /studio/
 ```
 
+## Releases
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please).
+Every push to `main` updates an open release PR that adds the next section to
+`CHANGELOG.md` from the Conventional Commit subjects, so write PR titles for a
+reader of the changelog and do not edit the changelog by hand. Merging that PR
+tags `vX.Y.Z`, creates the GitHub release, and attaches the binaries.
+
 ## License
 
 [MIT](LICENSE) © Aris Kurniawan

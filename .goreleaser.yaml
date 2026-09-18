@@ -1,7 +1,8 @@
 # GoReleaser configuration for the fate-studio binary.
-# Tagging vX.Y.Z triggers .github/workflows/release.yml, which builds
-# cross-platform binaries, archives, and checksums. The engine is vendored, so
-# the build is hermetic.
+# .github/workflows/release.yml runs it after release-please tags vX.Y.Z and
+# creates the GitHub release; it adds cross-platform binaries, archives, and
+# checksums to that release and keeps release-please's notes. The engine is
+# vendored, so the build is hermetic.
 version: 2
 
 project_name: fate-studio
@@ -29,8 +30,8 @@ checksum:
   name_template: "checksums.txt"
 
 changelog:
-  use: github
-  sort: asc
+  disable: true
 
 release:
   prerelease: auto
+  mode: keep-existing
