@@ -63,6 +63,11 @@ function Header({ data }: { data: RFNodeData }) {
   return (
     <div className="nhead">
       {n.initial && <InitialDot id={n.id} />}
+      {data.activeLeaf && (
+        <svg className="play-mark" viewBox="0 0 8 9.6" aria-hidden="true">
+          <path d="M0 0 V9.6 L8 4.8Z" />
+        </svg>
+      )}
       <span className="nlabel">{n.label}</span>
       {n.type !== "atomic" && n.type !== "compound" && <span className={`ntype t-${n.type}`}>{n.type}</span>}
       {!data.compact && !!n.entry?.length && (
@@ -124,7 +129,7 @@ function Badges({ data }: { data: RFNodeData }) {
 }
 
 const cls = (data: RFNodeData, base: string) =>
-  `${base}${data.active ? " active" : ""}${data.activeLeaf ? " leaf" : ""}`;
+  `${base}${data.active ? " active" : ""}${data.activeLeaf ? " leaf" : ""}${data.compact ? " compact" : ""}`;
 
 export function StateNode({ data }: P) {
   return (
@@ -201,10 +206,10 @@ export function FinalNode({ data }: P) {
   return (
     <div className={cls(data, "node final")} title={data.vm.node.label}>
       <TargetHandle />
-      <div className="final-bullet">
-        <span className="final-outer" />
-        <span className="final-inner" />
-      </div>
+      <svg className="final-ring" viewBox="0 0 30 30" aria-hidden="true">
+        <circle cx="15" cy="15" r="12" />
+        <circle className="final-dot" cx="15" cy="15" r="5" />
+      </svg>
       <span className="final-label">{data.vm.node.label}</span>
     </div>
   );
