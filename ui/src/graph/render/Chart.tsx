@@ -301,10 +301,10 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
         pannable
         zoomable
         nodeColor={(n: Node) => {
-          if (n.type === "parallel") return "rgba(194,239,78,0.30)";
-          return "rgba(106,95,193,0.35)";
+          if (n.type === "parallel") return "color-mix(in srgb, var(--accent) 30%, transparent)";
+          return "color-mix(in srgb, var(--edge) 45%, transparent)";
         }}
-        maskColor="rgba(0,0,0,0.60)"
+        maskColor="color-mix(in srgb, var(--bg) 70%, transparent)"
       />
     </ReactFlow>
   );
