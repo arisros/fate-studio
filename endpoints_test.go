@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	fate "github.com/arisros/fate"
+	"github.com/arisros/fate/effect"
+	"github.com/arisros/fate/engine"
 
 	studio "github.com/arisros/fate-studio"
 )
@@ -26,14 +27,14 @@ func (sNext) EventName() string { return "NEXT" }
 
 func demoServer(t *testing.T) *studio.Server {
 	t.Helper()
-	build := func() *fate.Machine[sCtx, sEvt] {
-		m, err := fate.CreateMachine(fate.MachineConfig[sCtx, sEvt]{
+	build := func() *engine.Machine[sCtx, sEvt] {
+		m, err := engine.CreateMachine(engine.MachineConfig[sCtx, sEvt]{
 			ID:      "demo",
 			Initial: "a",
-			States: map[string]fate.StateNodeConfig[sCtx, sEvt]{
-				"a": {On: map[string][]fate.TransitionConfig[sCtx, sEvt]{"NEXT": {{Target: "b"}}}},
-				"b": {On: map[string][]fate.TransitionConfig[sCtx, sEvt]{"NEXT": {{Target: "c"}}}},
-				"c": {Type: fate.NodeFinal},
+			States: map[string]engine.StateNodeConfig[sCtx, sEvt]{
+				"a": {On: map[string][]engine.TransitionConfig[sCtx, sEvt]{"NEXT": {{Target: "b"}}}},
+				"b": {On: map[string][]engine.TransitionConfig[sCtx, sEvt]{"NEXT": {{Target: "c"}}}},
+				"c": {Type: engine.NodeFinal},
 			},
 		})
 		if err != nil {
@@ -170,28 +171,28 @@ func (effFail) EventName() string { return "FAIL" }
 
 func effServer(t *testing.T) *studio.Server {
 	t.Helper()
-	build := func() *fate.Machine[effCtx, effEvt] {
-		m, err := fate.CreateMachine(fate.MachineConfig[effCtx, effEvt]{
+	build := func() *engine.Machine[effCtx, effEvt] {
+		m, err := engine.CreateMachine(engine.MachineConfig[effCtx, effEvt]{
 			ID:      "eff",
 			Initial: "loading",
-			States: map[string]fate.StateNodeConfig[effCtx, effEvt]{
+			States: map[string]engine.StateNodeConfig[effCtx, effEvt]{
 				"loading": {
-					Invoke: []fate.Invocation[effCtx, effEvt]{{
+					Invoke: []effect.Invocation[effCtx, effEvt]{{
 						ID: "req", Src: "svc",
 						OnDone:  func(any) effEvt { return effDone{} },
 						OnError: func(error) effEvt { return effFail{} },
 					}},
-					After: map[time.Duration][]fate.TransitionConfig[effCtx, effEvt]{
+					After: map[time.Duration][]engine.TransitionConfig[effCtx, effEvt]{
 						time.Minute: {{Target: "expired"}},
 					},
-					On: map[string][]fate.TransitionConfig[effCtx, effEvt]{
+					On: map[string][]engine.TransitionConfig[effCtx, effEvt]{
 						"DONE": {{Target: "ready"}},
 						"FAIL": {{Target: "failed"}},
 					},
 				},
-				"ready":   {Type: fate.NodeFinal},
-				"failed":  {Type: fate.NodeFinal},
-				"expired": {Type: fate.NodeFinal},
+				"ready":   {Type: engine.NodeFinal},
+				"failed":  {Type: engine.NodeFinal},
+				"expired": {Type: engine.NodeFinal},
 			},
 		})
 		if err != nil {

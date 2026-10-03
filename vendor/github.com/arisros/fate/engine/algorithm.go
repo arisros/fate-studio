@@ -1,10 +1,12 @@
-package fate
+package engine
 
 import (
 	"maps"
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/arisros/fate/persist"
 )
 
 // SCXML transition algorithms.
@@ -62,7 +64,7 @@ func lcca[Ctx any, Evt any](source, target *stateNode[Ctx, Evt], internal bool) 
 // exit, each contributing its own chain.
 func computeExitSet[Ctx any, Evt any](
 	root *stateNode[Ctx, Evt],
-	current StateValue,
+	current persist.StateValue,
 	source, target *stateNode[Ctx, Evt],
 	internal bool,
 ) []*stateNode[Ctx, Evt] {
@@ -159,7 +161,7 @@ func computeEntrySet[Ctx any, Evt any](
 		chain = append([]*stateNode[Ctx, Evt]{cursor}, chain...)
 	}
 
-	e := entryBuilder[Ctx, Evt]{saved: map[*stateNode[Ctx, Evt]]StateValue{}}
+	e := entryBuilder[Ctx, Evt]{saved: map[*stateNode[Ctx, Evt]]persist.StateValue{}}
 	if restore != nil {
 		e.record(restore.parent, restore.subtree)
 	}
@@ -173,10 +175,10 @@ func computeEntrySet[Ctx any, Evt any](
 // node to the value recording which of its children to enter, for a
 // deep-history restore.
 type entryBuilder[Ctx any, Evt any] struct {
-	saved map[*stateNode[Ctx, Evt]]StateValue
+	saved map[*stateNode[Ctx, Evt]]persist.StateValue
 }
 
-func (e entryBuilder[Ctx, Evt]) record(n *stateNode[Ctx, Evt], v StateValue) {
+func (e entryBuilder[Ctx, Evt]) record(n *stateNode[Ctx, Evt], v persist.StateValue) {
 	e.saved[n] = v
 	if v.IsAtomic() {
 		return

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/describe"
 )
 
 // LoadSnapshots registers every <dir>/*.json file as a static (non-live) machine
@@ -47,7 +47,7 @@ func (s *Server) loadSnapshotFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
-	d, err := sc.LoadDescriptor(b)
+	d, err := describe.LoadDescriptor(b)
 	if err != nil {
 		return fmt.Errorf("parse %s: %w", filepath.Base(path), err)
 	}
@@ -56,7 +56,7 @@ func (s *Server) loadSnapshotFile(path string) error {
 	if err := s.replaceEntry(Entry{
 		Name:    name,
 		Summary: summary,
-		Build:   func() sc.MachineDescriptor { return d },
+		Build:   func() describe.MachineDescriptor { return d },
 	}); err != nil {
 		return fmt.Errorf("skip %s: %w", filepath.Base(path), err)
 	}

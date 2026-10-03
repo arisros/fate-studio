@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/describe"
 	"github.com/arisros/fate/render"
 )
 
@@ -19,7 +19,7 @@ import (
 type Entry struct {
 	Name      string
 	Summary   string
-	Build     func() sc.MachineDescriptor
+	Build     func() describe.MachineDescriptor
 	BuildLive func() LiveInstance // nil = static-only, no local simulator
 	ProxyURL  string              // remote fate httphandler base URL
 }

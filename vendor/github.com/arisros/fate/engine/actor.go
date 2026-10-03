@@ -1,12 +1,14 @@
-package fate
+package engine
 
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 	"sync"
 
+	"github.com/arisros/fate/action"
+	"github.com/arisros/fate/effect"
 	"github.com/arisros/fate/internal"
+	"github.com/arisros/fate/persist"
 )
 
 // maxQueueDrain caps the number of internally-raised events processed in
@@ -20,9 +22,9 @@ type Actor[Ctx any, Evt any] struct {
 	machine *Machine[Ctx, Evt]
 
 	mu     sync.Mutex
-	value  StateValue
+	value  persist.StateValue
 	ctx    Ctx
-	status ActorStatus
+	status persist.ActorStatus
 	queue  internal.EventQueue[Evt]
 	logger func(string)
 
@@ -44,7 +46,7 @@ type Actor[Ctx any, Evt any] struct {
 	// re-entry. Populated unconditionally on every compound exit (cost is
 	// O(saved subtree size) per exit, which is bounded by the configuration
 	// depth and trivial in practice).
-	historyDeepMemory map[*stateNode[Ctx, Evt]]StateValue
+	historyDeepMemory map[*stateNode[Ctx, Evt]]persist.StateValue
 
 	// pendingDeepSplice carries the saved subtree from resolveHistoryRedirect
 	// to runTransitionLocked, which applies it after commitValue. Cleared
@@ -56,13 +58,13 @@ type Actor[Ctx any, Evt any] struct {
 	// itself; it only records them so an adapter can pull them via
 	// PendingTimers and drive them via FireTimer, and so they can be cancelled
 	// on state exit or actor stop.
-	armed map[TimerID]afterBinding[Ctx, Evt]
+	armed map[effect.TimerID]afterBinding[Ctx, Evt]
 
 	// pendingInvokes tracks every armed invocation by ID, for the same
 	// effects-as-data reason as armed timers (see invoke.go / ADR-0004).
-	pendingInvokes map[InvokeID]invokeBinding[Ctx, Evt]
+	pendingInvokes map[effect.InvokeID]invokeBinding[Ctx, Evt]
 
-	subscribers []func(Snapshot[Ctx])
+	subscribers []func(persist.Snapshot[Ctx])
 }
 
 // afterBinding records which state and delay bucket an armed timer belongs to,
@@ -76,7 +78,7 @@ type afterBinding[Ctx any, Evt any] struct {
 // resolveHistoryRedirect to the post-commit splice step.
 type deepHistorySplice[Ctx any, Evt any] struct {
 	parent  *stateNode[Ctx, Evt]
-	subtree StateValue
+	subtree persist.StateValue
 }
 
 // ActorOption configures a new Actor.
@@ -88,7 +90,7 @@ type actorOpts struct {
 }
 
 type snapshotRestore struct {
-	value StateValue
+	value persist.StateValue
 	// context restore added in P6 with persisted snapshot
 }
 
@@ -96,7 +98,7 @@ type snapshotRestore struct {
 // NewActorFromSnapshot (P6) and by tests that need to seed mid-flight.
 // The value must be a valid configuration of the machine; this is not
 // re-validated in the skeleton.
-func WithInitialValue[Ctx any, Evt any](v StateValue) ActorOption {
+func WithInitialValue[Ctx any, Evt any](v persist.StateValue) ActorOption {
 	return func(o *actorOpts) {
 		o.initialSnapshot = &snapshotRestore{value: v}
 	}
@@ -118,12 +120,12 @@ func NewActor[Ctx any, Evt any](m *Machine[Ctx, Evt], opts ...ActorOption) *Acto
 	a := &Actor[Ctx, Evt]{
 		machine:           m,
 		ctx:               m.initialContext(),
-		status:            StatusStopped,
+		status:            persist.StatusStopped,
 		logger:            o.logger,
-		armed:             map[TimerID]afterBinding[Ctx, Evt]{},
-		pendingInvokes:    map[InvokeID]invokeBinding[Ctx, Evt]{},
+		armed:             map[effect.TimerID]afterBinding[Ctx, Evt]{},
+		pendingInvokes:    map[effect.InvokeID]invokeBinding[Ctx, Evt]{},
 		historyMemory:     map[*stateNode[Ctx, Evt]]string{},
-		historyDeepMemory: map[*stateNode[Ctx, Evt]]StateValue{},
+		historyDeepMemory: map[*stateNode[Ctx, Evt]]persist.StateValue{},
 	}
 	if o.initialSnapshot != nil {
 		a.value = o.initialSnapshot.value
@@ -140,10 +142,10 @@ func NewActor[Ctx any, Evt any](m *Machine[Ctx, Evt], opts ...ActorOption) *Acto
 func (a *Actor[Ctx, Evt]) Start(_ context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.status == StatusRunning {
+	if a.status == persist.StatusRunning {
 		return nil
 	}
-	a.status = StatusRunning
+	a.status = persist.StatusRunning
 
 	// Walk the active chain from the root's initial child down into the
 	// initial-descendant chain, executing each node's Entry in order and
@@ -170,13 +172,13 @@ func (a *Actor[Ctx, Evt]) Start(_ context.Context) error {
 func (a *Actor[Ctx, Evt]) Send(_ context.Context, evt Evt) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.status == StatusStopped {
+	if a.status == persist.StatusStopped {
 		return ErrActorStopped
 	}
-	if a.status == StatusDone {
+	if a.status == persist.StatusDone {
 		return nil // silently drop events to a completed actor
 	}
-	if a.status != StatusRunning {
+	if a.status != persist.StatusRunning {
 		return ErrActorNotStarted
 	}
 	a.handleEventLocked(evt)
@@ -210,15 +212,15 @@ func (a *Actor[Ctx, Evt]) Send(_ context.Context, evt Evt) error {
 func (a *Actor[Ctx, Evt]) Can(evt Evt) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.status != StatusRunning {
+	if a.status != persist.StatusRunning {
 		return false
 	}
-	selections := selectTransitions[Ctx, Evt](a.machine.root, a.value, a.ctx, evt, eventNameOf(evt))
+	selections := selectTransitions[Ctx, Evt](a.machine.root, a.value, a.ctx, evt, internal.EventName(evt))
 	return len(selections) > 0
 }
 
 // Snapshot returns the actor's current state. Safe to call concurrently.
-func (a *Actor[Ctx, Evt]) Snapshot() Snapshot[Ctx] {
+func (a *Actor[Ctx, Evt]) Snapshot() persist.Snapshot[Ctx] {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.snapshotLocked()
@@ -227,7 +229,7 @@ func (a *Actor[Ctx, Evt]) Snapshot() Snapshot[Ctx] {
 // Subscribe registers an observer that is called with a snapshot after
 // every Send (and once on Start, after entry actions). Returns an
 // unsubscribe func.
-func (a *Actor[Ctx, Evt]) Subscribe(obs func(Snapshot[Ctx])) func() {
+func (a *Actor[Ctx, Evt]) Subscribe(obs func(persist.Snapshot[Ctx])) func() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.subscribers = append(a.subscribers, obs)
@@ -246,9 +248,9 @@ func (a *Actor[Ctx, Evt]) Subscribe(obs func(Snapshot[Ctx])) func() {
 func (a *Actor[Ctx, Evt]) Stop() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.status = StatusStopped
+	a.status = persist.StatusStopped
 	a.cancelAllAfterLocked()
-	a.pendingInvokes = map[InvokeID]invokeBinding[Ctx, Evt]{}
+	a.pendingInvokes = map[effect.InvokeID]invokeBinding[Ctx, Evt]{}
 }
 
 // handleEventLocked processes a single event: selects transitions (one per
@@ -257,7 +259,7 @@ func (a *Actor[Ctx, Evt]) Stop() {
 // applied in the order returned by selectTransitions (deterministic across
 // runs, since leaves are visited in alphabetical path order).
 func (a *Actor[Ctx, Evt]) handleEventLocked(evt Evt) {
-	eventName := eventNameOf(evt)
+	eventName := internal.EventName(evt)
 	selections := selectTransitions[Ctx, Evt](a.machine.root, a.value, a.ctx, evt, eventName)
 	for _, sel := range selections {
 		t := sel.Config
@@ -439,7 +441,7 @@ func (a *Actor[Ctx, Evt]) settleFinalLocked(triggerEvt Evt) {
 		if parent == nil || parent.name == "" {
 			// Reached a final state at the top level — actor is done.
 			a.captureOutputLocked(leaf)
-			a.status = StatusDone
+			a.status = persist.StatusDone
 			return
 		}
 		// Evaluate parent.onDone candidates.
@@ -458,7 +460,7 @@ func (a *Actor[Ctx, Evt]) settleFinalLocked(triggerEvt Evt) {
 			// it's the top-level child that completed.
 			if parent.parent == nil || parent.parent.name == "" {
 				a.captureOutputLocked(leaf)
-				a.status = StatusDone
+				a.status = persist.StatusDone
 			}
 			return
 		}
@@ -500,7 +502,7 @@ func (a *Actor[Ctx, Evt]) drainQueueLocked() {
 
 // runActions evaluates a slice of actions against the current context and
 // event. Each action may update context and/or queue events via the sink.
-func (a *Actor[Ctx, Evt]) runActions(actions []Action[Ctx, Evt], evt Evt) {
+func (a *Actor[Ctx, Evt]) runActions(actions []action.Action[Ctx, Evt], evt Evt) {
 	if len(actions) == 0 {
 		return
 	}
@@ -509,13 +511,13 @@ func (a *Actor[Ctx, Evt]) runActions(actions []Action[Ctx, Evt], evt Evt) {
 		if act == nil {
 			continue
 		}
-		a.ctx = act.apply(a.ctx, evt, sink)
+		a.ctx = act.Apply(a.ctx, evt, sink)
 	}
 }
 
-func (a *Actor[Ctx, Evt]) snapshotLocked() Snapshot[Ctx] {
-	return Snapshot[Ctx]{
-		Version: SnapshotVersion,
+func (a *Actor[Ctx, Evt]) snapshotLocked() persist.Snapshot[Ctx] {
+	return persist.Snapshot[Ctx]{
+		Version: persist.SnapshotVersion,
 		Value:   a.value,
 		Context: a.ctx,
 		Status:  a.status,
@@ -548,16 +550,16 @@ func (a *Actor[Ctx, Evt]) notifyLocked() {
 	}
 }
 
-// actorSink implements actionSink by routing into the actor's queue + logger.
+// actorSink implements Sink by routing into the actor's queue + logger.
 type actorSink[Ctx any, Evt any] struct {
 	a *Actor[Ctx, Evt]
 }
 
-func (s actorSink[Ctx, Evt]) raise(e Evt) {
+func (s actorSink[Ctx, Evt]) Raise(e Evt) {
 	s.a.queue.Push(e)
 }
 
-func (s actorSink[Ctx, Evt]) log(msg string) {
+func (s actorSink[Ctx, Evt]) Log(msg string) {
 	if s.a.logger != nil {
 		s.a.logger(msg)
 	}
@@ -602,39 +604,7 @@ func appendInitialEntry[Ctx any, Evt any](n *stateNode[Ctx, Evt], out *[]*stateN
 // entry returns the node's entry actions from the underlying config. The
 // stateNode struct doesn't store actions directly (kept lean); they live
 // alongside the on-event map. For P4 we store them on the node.
-func (n *stateNode[Ctx, Evt]) entry() []Action[Ctx, Evt] { return n.entryActions }
+func (n *stateNode[Ctx, Evt]) entry() []action.Action[Ctx, Evt] { return n.entryActions }
 
 // exit returns the node's exit actions.
-func (n *stateNode[Ctx, Evt]) exit() []Action[Ctx, Evt] { return n.exitActions }
-
-// eventNameOf extracts a string tag for an event. The convention is:
-//
-//  1. If Evt is a string (or string-typed), it is the name directly.
-//  2. If Evt has an EventName() method, that is used.
-//  3. Otherwise, reflection takes the concrete struct type's name and
-//     strips conventional suffixes ("T", "Event") used by codegen.
-//
-// Codegen-emitted typed events (per ADR-006) implement EventName() so they
-// don't pay the reflection cost.
-func eventNameOf(evt any) string {
-	if s, ok := evt.(string); ok {
-		return s
-	}
-	if named, ok := evt.(interface{ EventName() string }); ok {
-		return named.EventName()
-	}
-	t := reflect.TypeOf(evt)
-	if t == nil {
-		return ""
-	}
-	if t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	name := t.Name()
-	for _, suffix := range []string{"T", "Event"} {
-		if len(name) > len(suffix) && name[len(name)-len(suffix):] == suffix {
-			return name[:len(name)-len(suffix)]
-		}
-	}
-	return name
-}
+func (n *stateNode[Ctx, Evt]) exit() []action.Action[Ctx, Evt] { return n.exitActions }

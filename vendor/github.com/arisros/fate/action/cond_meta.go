@@ -1,8 +1,9 @@
-package fate
+package action
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -63,9 +64,9 @@ type GatesBuilder struct {
 //
 //	TransitionConfig[Ctx, Evt]{
 //		Guard: approved,
-//		CondMeta: fate.Gates(
-//			fate.Field("$.score").Gte(60),
-//			fate.Field("$.status").Eq("approved"),
+//		CondMeta: action.Gates(
+//			action.Field("$.score").Gte(60),
+//			action.Field("$.status").Eq("approved"),
 //		).Sample(`{"score": 65, "status": "approved"}`),
 //	}
 func Gates(fields ...CondField) *GatesBuilder {
@@ -139,25 +140,25 @@ func (f *CondFieldBuilder) Truthy() CondField { return f.build(CondTruthy, nil) 
 // Falsy checks that the field is absent, null, zero, empty, or false.
 func (f *CondFieldBuilder) Falsy() CondField { return f.build(CondFalsy, nil) }
 
-// seal validates m and returns a copy the machine owns: operands and the sample
+// Seal validates m and returns a copy the machine owns: operands and the sample
 // are stored as compact JSON, so later changes to the caller's CondMeta, or to
 // a descriptor handed out by Describe, cannot reach the machine.
-func (m *CondMeta) seal(where string) (*CondMeta, error) {
+func (m *CondMeta) Seal() (*CondMeta, error) {
 	if m == nil {
 		return nil, nil
 	}
 	out := &CondMeta{Fields: make([]CondField, 0, len(m.Fields))}
 	for i, f := range m.Fields {
 		if !validCondPath(f.Path) {
-			return nil, fmt.Errorf("%w: %s cond field %d has path %q, want \"$.key\" or \"$.key.0\"", ErrInvalidConfig, where, i, f.Path)
+			return nil, fmt.Errorf("cond field %d has path %q, want \"$.key\" or \"$.key.0\"", i, f.Path)
 		}
 		if err := checkOperand(f); err != nil {
-			return nil, fmt.Errorf("%w: %s cond field %q: %v", ErrInvalidConfig, where, f.Path, err)
+			return nil, fmt.Errorf("cond field %q: %v", f.Path, err)
 		}
 		if f.Value != nil {
 			raw, err := json.Marshal(f.Value)
 			if err != nil {
-				return nil, fmt.Errorf("%w: %s cond field %q value: %v", ErrInvalidConfig, where, f.Path, err)
+				return nil, fmt.Errorf("cond field %q value: %v", f.Path, err)
 			}
 			f.Value = json.RawMessage(raw)
 		}
@@ -166,26 +167,26 @@ func (m *CondMeta) seal(where string) (*CondMeta, error) {
 	if len(m.Sample) > 0 {
 		var obj map[string]json.RawMessage
 		if err := json.Unmarshal(m.Sample, &obj); err != nil || obj == nil {
-			return nil, fmt.Errorf("%w: %s cond sample is not a JSON object", ErrInvalidConfig, where)
+			return nil, errors.New("cond sample is not a JSON object")
 		}
 		var buf bytes.Buffer
 		if err := json.Compact(&buf, m.Sample); err != nil {
-			return nil, fmt.Errorf("%w: %s cond sample: %v", ErrInvalidConfig, where, err)
+			return nil, fmt.Errorf("cond sample: %v", err)
 		}
 		out.Sample = buf.Bytes()
 	}
 	return out, nil
 }
 
-// clone returns a deep copy of a sealed CondMeta.
-func (m *CondMeta) clone() *CondMeta {
+// Clone returns a deep copy of a sealed CondMeta.
+func (m *CondMeta) Clone() *CondMeta {
 	if m == nil {
 		return nil
 	}
-	out := &CondMeta{Fields: make([]CondField, len(m.Fields)), Sample: cloneRaw(m.Sample)}
+	out := &CondMeta{Fields: make([]CondField, len(m.Fields)), Sample: bytes.Clone(m.Sample)}
 	for i, f := range m.Fields {
 		if raw, ok := f.Value.(json.RawMessage); ok {
-			f.Value = cloneRaw(raw)
+			f.Value = json.RawMessage(bytes.Clone(raw))
 		}
 		out.Fields[i] = f
 	}

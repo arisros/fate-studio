@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/describe"
 )
 
 func machineLive(t *testing.T, s *Server, name string) bool {
@@ -62,7 +62,7 @@ func TestLoadSnapshots_DoesNotShadowLiveMachine(t *testing.T) {
 	s := NewServer("test")
 	s.Register(Entry{
 		Name:      "tl",
-		Build:     func() sc.MachineDescriptor { return sc.MachineDescriptor{ID: "live"} },
+		Build:     func() describe.MachineDescriptor { return describe.MachineDescriptor{ID: "live"} },
 		BuildLive: func() LiveInstance { return nil },
 	})
 	n, err := s.LoadSnapshots(dir)
