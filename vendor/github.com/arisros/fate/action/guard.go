@@ -1,4 +1,6 @@
-package fate
+package action
+
+import "github.com/arisros/fate/persist"
 
 // Guard is a pure predicate over context and event. Returning true selects
 // the transition; returning false skips it. Guards must be pure (no I/O,
@@ -49,7 +51,7 @@ func Not[Ctx any, Evt any](g Guard[Ctx, Evt]) Guard[Ctx, Evt] {
 }
 
 // To match against the active state configuration rather than context or event
-// data — XState's stateIn guard — use a [Cond] via [TransitionConfig.Cond]
+// data — XState's stateIn guard — use a [Cond] via engine.TransitionConfig.Cond
 // (see [StateIn] / [InState]). Guards intentionally see only (context, event)
 // so they remain pure functions of data.
 
@@ -58,22 +60,21 @@ func Not[Ctx any, Evt any](g Guard[Ctx, Evt]) Guard[Ctx, Evt] {
 // fate equivalent of XState's stateIn guard.
 //
 // A [Guard] sees only (context, event); a Cond sees only which states are
-// currently active. The two are complementary: set both [TransitionConfig.Guard]
-// and [TransitionConfig.Cond] and the transition fires only when both pass.
+// currently active. The two are complementary: set both engine.TransitionConfig.Guard
+// and engine.TransitionConfig.Cond and the transition fires only when both pass.
 //
 // Build a Cond with [StateIn] / [InState] and compose with [CondNot],
 // [CondAllOf], and [CondAnyOf]. Conds hold no mutable state and no reference to
 // any actor, so a Cond built once is safe to share across machines and
 // goroutines.
 type Cond interface {
-	// matches reports whether the condition holds for the given active
-	// configuration. Unexported so the set of Cond implementations stays
-	// closed to this package.
-	matches(v StateValue) bool
+	// Matches reports whether the condition holds for the given active
+	// configuration.
+	Matches(v persist.StateValue) bool
 }
 
 // InState returns a [Cond] that holds when the active configuration includes
-// the given dot-separated state path. Matching uses [StateValue.Matches], so a
+// the given dot-separated state path. Matching uses [persist.StateValue.Matches], so a
 // prefix such as "menu.settings" matches any deeper active leaf beneath it.
 func InState(path string) Cond { return inStateCond{path: path} }
 
@@ -83,14 +84,16 @@ func StateIn(path string) Cond { return InState(path) }
 
 type inStateCond struct{ path string }
 
-func (c inStateCond) matches(v StateValue) bool { return v.Matches(c.path) }
+// Matches implements [Cond].
+func (c inStateCond) Matches(v persist.StateValue) bool { return v.Matches(c.path) }
 
 // CondNot returns a [Cond] that holds when c does not.
 func CondNot(c Cond) Cond { return notCond{c: c} }
 
 type notCond struct{ c Cond }
 
-func (n notCond) matches(v StateValue) bool { return n.c == nil || !n.c.matches(v) }
+// Matches implements [Cond].
+func (n notCond) Matches(v persist.StateValue) bool { return n.c == nil || !n.c.Matches(v) }
 
 // CondAllOf returns a [Cond] that holds only when every supplied condition
 // holds. With no arguments it always holds.
@@ -98,9 +101,10 @@ func CondAllOf(cs ...Cond) Cond { return allOfCond{cs: cs} }
 
 type allOfCond struct{ cs []Cond }
 
-func (a allOfCond) matches(v StateValue) bool {
+// Matches implements [Cond].
+func (a allOfCond) Matches(v persist.StateValue) bool {
 	for _, c := range a.cs {
-		if c != nil && !c.matches(v) {
+		if c != nil && !c.Matches(v) {
 			return false
 		}
 	}
@@ -113,26 +117,12 @@ func CondAnyOf(cs ...Cond) Cond { return anyOfCond{cs: cs} }
 
 type anyOfCond struct{ cs []Cond }
 
-func (a anyOfCond) matches(v StateValue) bool {
+// Matches implements [Cond].
+func (a anyOfCond) Matches(v persist.StateValue) bool {
 	for _, c := range a.cs {
-		if c != nil && c.matches(v) {
+		if c != nil && c.Matches(v) {
 			return true
 		}
 	}
 	return false
-}
-
-// transitionPasses reports whether a transition's combined Guard and Cond admit
-// it for the given context, event, and active configuration. A nil Guard or nil
-// Cond is treated as "always passes". Centralised here so every selection site
-// (event handling, wildcard, onDone, and after timers) applies identical
-// semantics.
-func transitionPasses[Ctx any, Evt any](t TransitionConfig[Ctx, Evt], ctx Ctx, evt Evt, value StateValue) bool {
-	if t.Guard != nil && !t.Guard(ctx, evt) {
-		return false
-	}
-	if t.Cond != nil && !t.Cond.matches(value) {
-		return false
-	}
-	return true
 }

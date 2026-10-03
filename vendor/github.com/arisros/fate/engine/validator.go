@@ -1,4 +1,4 @@
-package fate
+package engine
 
 // Stateless validator helpers on *Machine — exposed for callers that need
 // to ask FSM questions WITHOUT spinning up an Actor instance.

@@ -1,51 +1,26 @@
-package fate
+package engine
 
 import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/arisros/fate/effect"
+	"github.com/arisros/fate/persist"
 )
 
-// TimerID uniquely identifies one armed delayed ("after") transition for as
-// long as it is pending. It is derived deterministically from the owning
-// state's path, the delay, and the delay's index within that state, so the same
-// logical timer keeps the same ID across runs and across persistence — a
-// prerequisite for replay-safe driving by an adapter.
-type TimerID string
-
-// PendingTimer describes one delayed ("after") transition the actor currently
-// has armed. It is what an adapter reads from [Actor.PendingTimers] to learn
-// which timers to drive; when the adapter decides a delay has elapsed it calls
-// [Actor.FireTimer] with the ID.
-//
-// The fate core is clock-agnostic: it never sleeps, reads the wall clock, or
-// starts a goroutine for a timer. It only records that a state wants to fire
-// "after Delay" and exposes that intent. How and when the timer actually fires
-// is entirely the adapter's responsibility (a Temporal adapter maps it to
-// workflow.NewTimer; an in-memory adapter maps it to the OS clock; a test
-// drives it by hand).
-type PendingTimer struct {
-	// ID is the timer's stable identifier, passed back to [Actor.FireTimer].
-	ID TimerID
-	// Delay is the configured delay of the underlying after-transition. An
-	// adapter that resumes a persisted actor is responsible for tracking how
-	// much of the delay has already elapsed.
-	Delay time.Duration
-}
-
-// makeTimerID derives the deterministic [TimerID] for the idx-th delay bucket
+// makeTimerID derives the deterministic [effect.TimerID] for the idx-th delay bucket
 // of the state at the given path. The encoding embeds the path, the delay, and
 // the index so distinct buckets never collide and the same logical timer keeps
 // the same ID across runs and across persistence.
-func makeTimerID(path []string, idx int, delayNanos int64) TimerID {
+func makeTimerID(path []string, idx int, delayNanos int64) effect.TimerID {
 	var b strings.Builder
 	b.WriteString(strings.Join(path, "."))
 	b.WriteString("#after#")
 	b.WriteString(strconv.FormatInt(delayNanos, 10))
 	b.WriteString("#")
 	b.WriteString(strconv.Itoa(idx))
-	return TimerID(b.String())
+	return effect.TimerID(b.String())
 }
 
 // PendingTimers returns the actor's currently-armed delayed transitions, in
@@ -53,12 +28,12 @@ func makeTimerID(path []string, idx int, delayNanos int64) TimerID {
 // an adapter arms its own durable or wall-clock timers from this list and calls
 // [Actor.FireTimer] when a delay elapses. The core never fires a timer itself,
 // so without an adapter pending timers simply remain armed. See ADR-0003.
-func (a *Actor[Ctx, Evt]) PendingTimers() []PendingTimer {
+func (a *Actor[Ctx, Evt]) PendingTimers() []effect.PendingTimer {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	out := make([]PendingTimer, 0, len(a.armed))
+	out := make([]effect.PendingTimer, 0, len(a.armed))
 	for id, b := range a.armed {
-		out = append(out, PendingTimer{ID: id, Delay: b.entry.delay})
+		out = append(out, effect.PendingTimer{ID: id, Delay: b.entry.delay})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
@@ -76,7 +51,7 @@ func (a *Actor[Ctx, Evt]) PendingTimers() []PendingTimer {
 // timers against an external clock use it to tell a delivered delay from a late
 // callback for a state the machine has already left; callers that do not care
 // may discard it.
-func (a *Actor[Ctx, Evt]) FireTimer(id TimerID) bool {
+func (a *Actor[Ctx, Evt]) FireTimer(id effect.TimerID) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	fired := a.fireTimerLocked(id)
@@ -89,7 +64,7 @@ func (a *Actor[Ctx, Evt]) FireTimer(id TimerID) bool {
 
 // armAfterLocked records every delayed transition declared on n as a pending
 // timer. Called when n is entered (initial Start chain or a transition's entry
-// set). Each bucket gets one entry keyed by a deterministic [TimerID]. The core
+// set). Each bucket gets one entry keyed by a deterministic [effect.TimerID]. The core
 // does not start any clock; an adapter discovers these via PendingTimers and
 // fires them via FireTimer. The actor mutex must be held.
 func (a *Actor[Ctx, Evt]) armAfterLocked(n *stateNode[Ctx, Evt]) {
@@ -111,15 +86,15 @@ func (a *Actor[Ctx, Evt]) cancelAfterLocked(n *stateNode[Ctx, Evt]) {
 // cancelAllAfterLocked disarms every pending timer. Called on Stop. The actor
 // mutex must be held.
 func (a *Actor[Ctx, Evt]) cancelAllAfterLocked() {
-	a.armed = map[TimerID]afterBinding[Ctx, Evt]{}
+	a.armed = map[effect.TimerID]afterBinding[Ctx, Evt]{}
 }
 
 // fireTimerLocked verifies the timer is still armed and its state still active,
 // then fires the matching delayed transition as an internal step. The actor
 // mutex must be held. A timer cancelled (state exited) in the meantime is a
 // safe no-op.
-func (a *Actor[Ctx, Evt]) fireTimerLocked(id TimerID) bool {
-	if a.status != StatusRunning {
+func (a *Actor[Ctx, Evt]) fireTimerLocked(id effect.TimerID) bool {
+	if a.status != persist.StatusRunning {
 		return false
 	}
 	binding, ok := a.armed[id]

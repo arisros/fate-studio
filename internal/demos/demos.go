@@ -6,7 +6,10 @@ package demos
 import (
 	"time"
 
-	"github.com/arisros/fate"
+	"github.com/arisros/fate/action"
+	"github.com/arisros/fate/describe"
+	"github.com/arisros/fate/effect"
+	"github.com/arisros/fate/engine"
 
 	studio "github.com/arisros/fate-studio"
 )
@@ -18,14 +21,14 @@ type Demo struct {
 	Name       string
 	Summary    string
 	Entry      func() studio.Entry
-	Descriptor func() fate.MachineDescriptor
+	Descriptor func() describe.MachineDescriptor
 }
 
 // demoFor wraps a typed machine builder and event dispatcher as a Demo,
 // erasing the concrete Ctx/Evt type parameters.
 func demoFor[C any, E any](
 	name, summary string,
-	build func() *fate.Machine[C, E],
+	build func() *engine.Machine[C, E],
 	dispatch func(string) (E, error),
 ) Demo {
 	return Demo{
@@ -41,7 +44,7 @@ func demoFor[C any, E any](
 				},
 			}
 		},
-		Descriptor: func() fate.MachineDescriptor { return build().Describe() },
+		Descriptor: func() describe.MachineDescriptor { return build().Describe() },
 	}
 }
 
@@ -60,7 +63,7 @@ func All() []Demo {
 	}
 }
 
-func must[C any, E any](m *fate.Machine[C, E], err error) *fate.Machine[C, E] {
+func must[C any, E any](m *engine.Machine[C, E], err error) *engine.Machine[C, E] {
 	if err != nil {
 		panic(err)
 	}
@@ -102,16 +105,16 @@ func Dispatch(name string) (Evt, error) {
 }
 
 // TrafficLight is a flat three-state cycle driven by NEXT.
-func TrafficLight() *fate.Machine[Ctx, Evt] {
-	link := func(target string) fate.StateNodeConfig[Ctx, Evt] {
-		return fate.StateNodeConfig[Ctx, Evt]{On: map[string][]fate.TransitionConfig[Ctx, Evt]{
+func TrafficLight() *engine.Machine[Ctx, Evt] {
+	link := func(target string) engine.StateNodeConfig[Ctx, Evt] {
+		return engine.StateNodeConfig[Ctx, Evt]{On: map[string][]engine.TransitionConfig[Ctx, Evt]{
 			"NEXT": {{Target: target}},
 		}}
 	}
-	return must(fate.CreateMachine(fate.MachineConfig[Ctx, Evt]{
+	return must(engine.CreateMachine(engine.MachineConfig[Ctx, Evt]{
 		ID:      "traffic-light",
 		Initial: "red",
-		States: map[string]fate.StateNodeConfig[Ctx, Evt]{
+		States: map[string]engine.StateNodeConfig[Ctx, Evt]{
 			"red":    link("green"),
 			"green":  link("yellow"),
 			"yellow": link("red"),
@@ -121,23 +124,23 @@ func TrafficLight() *fate.Machine[Ctx, Evt] {
 
 // MediaPlayer is three independent parallel regions, each a small work → done
 // compound, all active simultaneously.
-func MediaPlayer() *fate.Machine[Ctx, Evt] {
-	region := func(work string) fate.StateNodeConfig[Ctx, Evt] {
-		return fate.StateNodeConfig[Ctx, Evt]{
+func MediaPlayer() *engine.Machine[Ctx, Evt] {
+	region := func(work string) engine.StateNodeConfig[Ctx, Evt] {
+		return engine.StateNodeConfig[Ctx, Evt]{
 			Initial: work,
-			States: map[string]fate.StateNodeConfig[Ctx, Evt]{
-				work:   {On: map[string][]fate.TransitionConfig[Ctx, Evt]{"NEXT": {{Target: "done"}}}},
-				"done": {Type: fate.NodeFinal},
+			States: map[string]engine.StateNodeConfig[Ctx, Evt]{
+				work:   {On: map[string][]engine.TransitionConfig[Ctx, Evt]{"NEXT": {{Target: "done"}}}},
+				"done": {Type: engine.NodeFinal},
 			},
 		}
 	}
-	return must(fate.CreateMachine(fate.MachineConfig[Ctx, Evt]{
+	return must(engine.CreateMachine(engine.MachineConfig[Ctx, Evt]{
 		ID:      "media-player",
 		Initial: "playing",
-		States: map[string]fate.StateNodeConfig[Ctx, Evt]{
+		States: map[string]engine.StateNodeConfig[Ctx, Evt]{
 			"playing": {
-				Type: fate.NodeParallel,
-				States: map[string]fate.StateNodeConfig[Ctx, Evt]{
+				Type: engine.NodeParallel,
+				States: map[string]engine.StateNodeConfig[Ctx, Evt]{
 					"audio":    region("decoding_audio"),
 					"captions": region("rendering_captions"),
 					"video":    region("decoding_video"),
@@ -148,55 +151,55 @@ func MediaPlayer() *fate.Machine[Ctx, Evt] {
 }
 
 // Pipeline is a linear flow ending in a final state.
-func Pipeline() *fate.Machine[Ctx, Evt] {
-	link := func(target string) fate.StateNodeConfig[Ctx, Evt] {
-		return fate.StateNodeConfig[Ctx, Evt]{On: map[string][]fate.TransitionConfig[Ctx, Evt]{
+func Pipeline() *engine.Machine[Ctx, Evt] {
+	link := func(target string) engine.StateNodeConfig[Ctx, Evt] {
+		return engine.StateNodeConfig[Ctx, Evt]{On: map[string][]engine.TransitionConfig[Ctx, Evt]{
 			"NEXT": {{Target: target}},
 		}}
 	}
-	return must(fate.CreateMachine(fate.MachineConfig[Ctx, Evt]{
+	return must(engine.CreateMachine(engine.MachineConfig[Ctx, Evt]{
 		ID:      "pipeline",
 		Initial: "ingest",
-		States: map[string]fate.StateNodeConfig[Ctx, Evt]{
+		States: map[string]engine.StateNodeConfig[Ctx, Evt]{
 			"ingest":    link("validate"),
 			"validate":  link("transform"),
 			"transform": link("done"),
-			"done":      {Type: fate.NodeFinal},
+			"done":      {Type: engine.NodeFinal},
 		},
 	}))
 }
 
 // Editor showcases deep history: the editing flow can be suspended at any
 // sub-state and resumed exactly where it left off via a deep-history node.
-func Editor() *fate.Machine[Ctx, Evt] {
-	link := func(target string) fate.StateNodeConfig[Ctx, Evt] {
-		return fate.StateNodeConfig[Ctx, Evt]{On: map[string][]fate.TransitionConfig[Ctx, Evt]{
+func Editor() *engine.Machine[Ctx, Evt] {
+	link := func(target string) engine.StateNodeConfig[Ctx, Evt] {
+		return engine.StateNodeConfig[Ctx, Evt]{On: map[string][]engine.TransitionConfig[Ctx, Evt]{
 			"NEXT": {{Target: target}},
 		}}
 	}
-	return must(fate.CreateMachine(fate.MachineConfig[Ctx, Evt]{
+	return must(engine.CreateMachine(engine.MachineConfig[Ctx, Evt]{
 		ID:      "editor",
 		Initial: "session",
-		States: map[string]fate.StateNodeConfig[Ctx, Evt]{
+		States: map[string]engine.StateNodeConfig[Ctx, Evt]{
 			"session": {
 				Initial: "editing",
-				States: map[string]fate.StateNodeConfig[Ctx, Evt]{
+				States: map[string]engine.StateNodeConfig[Ctx, Evt]{
 					"editing": {
 						Initial: "draft",
-						States: map[string]fate.StateNodeConfig[Ctx, Evt]{
+						States: map[string]engine.StateNodeConfig[Ctx, Evt]{
 							"draft":      link("review"),
 							"review":     link("publishing"),
 							"publishing": link("done"),
-							"hist":       {Type: fate.NodeHistory, History: fate.HistoryDeep, Default: "draft"},
+							"hist":       {Type: engine.NodeHistory, History: engine.HistoryDeep, Default: "draft"},
 						},
-						On: map[string][]fate.TransitionConfig[Ctx, Evt]{
+						On: map[string][]engine.TransitionConfig[Ctx, Evt]{
 							"SUSPEND": {{Target: "suspended"}},
 						},
 					},
-					"suspended": {On: map[string][]fate.TransitionConfig[Ctx, Evt]{
+					"suspended": {On: map[string][]engine.TransitionConfig[Ctx, Evt]{
 						"RESUME": {{Target: "editing.hist"}},
 					}},
-					"done": {Type: fate.NodeFinal},
+					"done": {Type: engine.NodeFinal},
 				},
 			},
 		},
@@ -241,19 +244,19 @@ func CounterDispatch(name string) (CounterEvt, error) {
 
 // Counter is a single-state machine whose transitions mutate context, so the
 // studio's context panel shows {"count": N} changing live as you send events.
-func Counter() *fate.Machine[CounterCtx, CounterEvt] {
-	add := func(d int) fate.Action[CounterCtx, CounterEvt] {
-		return fate.Assign(func(c CounterCtx, _ CounterEvt) CounterCtx { c.Count += d; return c })
+func Counter() *engine.Machine[CounterCtx, CounterEvt] {
+	add := func(d int) action.Action[CounterCtx, CounterEvt] {
+		return action.Assign(func(c CounterCtx, _ CounterEvt) CounterCtx { c.Count += d; return c })
 	}
-	return must(fate.CreateMachine(fate.MachineConfig[CounterCtx, CounterEvt]{
+	return must(engine.CreateMachine(engine.MachineConfig[CounterCtx, CounterEvt]{
 		ID:      "counter",
 		Initial: "active",
-		States: map[string]fate.StateNodeConfig[CounterCtx, CounterEvt]{
-			"active": {On: map[string][]fate.TransitionConfig[CounterCtx, CounterEvt]{
-				"INC": {{Actions: []fate.Action[CounterCtx, CounterEvt]{add(1)}}},
-				"DEC": {{Actions: []fate.Action[CounterCtx, CounterEvt]{add(-1)}}},
-				"RESET": {{Actions: []fate.Action[CounterCtx, CounterEvt]{
-					fate.Assign(func(c CounterCtx, _ CounterEvt) CounterCtx { c.Count = 0; return c }),
+		States: map[string]engine.StateNodeConfig[CounterCtx, CounterEvt]{
+			"active": {On: map[string][]engine.TransitionConfig[CounterCtx, CounterEvt]{
+				"INC": {{Actions: []action.Action[CounterCtx, CounterEvt]{add(1)}}},
+				"DEC": {{Actions: []action.Action[CounterCtx, CounterEvt]{add(-1)}}},
+				"RESET": {{Actions: []action.Action[CounterCtx, CounterEvt]{
+					action.Assign(func(c CounterCtx, _ CounterEvt) CounterCtx { c.Count = 0; return c }),
 				}}},
 			}},
 		},
@@ -283,20 +286,20 @@ func TimeoutDispatch(name string) (TimeoutEvt, error) {
 
 // Timeout has a state with a 30s after-timer: the studio shows the pending
 // timer, which you fire to advance to "expired" (or RESTART to re-arm it).
-func Timeout() *fate.Machine[TimeoutCtx, TimeoutEvt] {
-	return must(fate.CreateMachine(fate.MachineConfig[TimeoutCtx, TimeoutEvt]{
+func Timeout() *engine.Machine[TimeoutCtx, TimeoutEvt] {
+	return must(engine.CreateMachine(engine.MachineConfig[TimeoutCtx, TimeoutEvt]{
 		ID:      "timeout",
 		Initial: "waiting",
-		States: map[string]fate.StateNodeConfig[TimeoutCtx, TimeoutEvt]{
+		States: map[string]engine.StateNodeConfig[TimeoutCtx, TimeoutEvt]{
 			"waiting": {
-				On: map[string][]fate.TransitionConfig[TimeoutCtx, TimeoutEvt]{
+				On: map[string][]engine.TransitionConfig[TimeoutCtx, TimeoutEvt]{
 					"RESTART": {{Target: "waiting"}},
 				},
-				After: map[time.Duration][]fate.TransitionConfig[TimeoutCtx, TimeoutEvt]{
+				After: map[time.Duration][]engine.TransitionConfig[TimeoutCtx, TimeoutEvt]{
 					30 * time.Second: {{Target: "expired"}},
 				},
 			},
-			"expired": {Type: fate.NodeFinal},
+			"expired": {Type: engine.NodeFinal},
 		},
 	}))
 }
@@ -331,25 +334,25 @@ func FetchDispatch(name string) (FetchEvt, error) {
 
 // Fetch invokes a request while in "loading": the studio shows the pending
 // invocation, which you resolve (→ ready) or reject (→ error → RETRY).
-func Fetch() *fate.Machine[FetchCtx, FetchEvt] {
-	return must(fate.CreateMachine(fate.MachineConfig[FetchCtx, FetchEvt]{
+func Fetch() *engine.Machine[FetchCtx, FetchEvt] {
+	return must(engine.CreateMachine(engine.MachineConfig[FetchCtx, FetchEvt]{
 		ID:      "fetch",
 		Initial: "loading",
-		States: map[string]fate.StateNodeConfig[FetchCtx, FetchEvt]{
+		States: map[string]engine.StateNodeConfig[FetchCtx, FetchEvt]{
 			"loading": {
-				Invoke: []fate.Invocation[FetchCtx, FetchEvt]{{
+				Invoke: []effect.Invocation[FetchCtx, FetchEvt]{{
 					ID:      "request",
 					Src:     "http.get",
 					OnDone:  func(any) FetchEvt { return fOK{} },
 					OnError: func(error) FetchEvt { return fErr{} },
 				}},
-				On: map[string][]fate.TransitionConfig[FetchCtx, FetchEvt]{
+				On: map[string][]engine.TransitionConfig[FetchCtx, FetchEvt]{
 					"FETCHED": {{Target: "ready"}},
 					"FAILED":  {{Target: "error"}},
 				},
 			},
-			"ready": {Type: fate.NodeFinal},
-			"error": {On: map[string][]fate.TransitionConfig[FetchCtx, FetchEvt]{
+			"ready": {Type: engine.NodeFinal},
+			"error": {On: map[string][]engine.TransitionConfig[FetchCtx, FetchEvt]{
 				"RETRY": {{Target: "loading"}},
 			}},
 		},
