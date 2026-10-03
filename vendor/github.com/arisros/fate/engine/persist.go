@@ -1,41 +1,13 @@
-package fate
+package engine
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/arisros/fate/effect"
+	"github.com/arisros/fate/persist"
 )
-
-// SnapshotVersion is the on-disk shape version. Incremented for
-// backward-incompatible changes per ADR-003.
-const SnapshotVersion = 1
-
-// ActorStatus is the lifecycle phase of an Actor.
-type ActorStatus string
-
-const (
-	StatusRunning ActorStatus = "running"
-	StatusStopped ActorStatus = "stopped"
-	StatusDone    ActorStatus = "done"
-	StatusError   ActorStatus = "error"
-)
-
-// Snapshot is an immutable view of an actor's state at one instant. Safe to
-// marshal to JSON and persist (see ADR-003).
-//
-// The P3 skeleton only populates Version, Value, Context, and Status. Output,
-// Error, Children, Queue, History, and Timers land in later phases.
-type Snapshot[Ctx any] struct {
-	Version int             `json:"version"`
-	Value   StateValue      `json:"value"`
-	Context Ctx             `json:"context"`
-	Status  ActorStatus     `json:"status"`
-	Output  json.RawMessage `json:"output,omitempty"`
-	Error   string          `json:"error,omitempty"`
-}
-
-// Matches is a convenience wrapper around Value.Matches.
-func (s Snapshot[Ctx]) Matches(target string) bool { return s.Value.Matches(target) }
 
 // persistedShape is the JSON layout of a persisted actor snapshot. Versioned
 // per ADR-003; backward-compat is the responsibility of restoreV1, restoreV2,
@@ -46,10 +18,10 @@ func (s Snapshot[Ctx]) Matches(target string) bool { return s.Value.Matches(targ
 // the concrete type isn't recoverable from JSON alone, callers can layer a
 // codec on top of Persist — see ADR-003 follow-up notes.
 type persistedShape[Ctx any, Evt any] struct {
-	Version int         `json:"version"`
-	Status  ActorStatus `json:"status"`
-	Value   StateValue  `json:"value"`
-	Context Ctx         `json:"context"`
+	Version int                 `json:"version"`
+	Status  persist.ActorStatus `json:"status"`
+	Value   persist.StateValue  `json:"value"`
+	Context Ctx                 `json:"context"`
 	// History stores shallow-history memory: compound state's dot-path →
 	// remembered immediate child name.
 	History map[string]string `json:"history,omitempty"`
@@ -57,8 +29,8 @@ type persistedShape[Ctx any, Evt any] struct {
 	// saved value-inside subtree. Added 2026-05-27; older snapshots that
 	// lack this field unmarshal it as an empty map, which is a safe
 	// fallback — the next compound exit re-populates it.
-	HistoryDeep map[string]StateValue `json:"history_deep,omitempty"`
-	Queue       []Evt                 `json:"queue,omitempty"`
+	HistoryDeep map[string]persist.StateValue `json:"history_deep,omitempty"`
+	Queue       []Evt                         `json:"queue,omitempty"`
 	// Output and Error capture a completed/failed actor's result. Pending
 	// timers and invocations are intentionally NOT stored: they are re-derived
 	// from the active configuration on restore (see ADR-0004).
@@ -83,12 +55,12 @@ func (a *Actor[Ctx, Evt]) persistedShapeLocked() persistedShape[Ctx, Evt] {
 	for node, child := range a.historyMemory {
 		history[strings.Join(node.path, ".")] = child
 	}
-	deep := make(map[string]StateValue, len(a.historyDeepMemory))
+	deep := make(map[string]persist.StateValue, len(a.historyDeepMemory))
 	for node, sub := range a.historyDeepMemory {
 		deep[strings.Join(node.path, ".")] = sub
 	}
 	return persistedShape[Ctx, Evt]{
-		Version:     SnapshotVersion,
+		Version:     persist.SnapshotVersion,
 		Status:      a.status,
 		Value:       a.value,
 		Context:     a.ctx,
@@ -115,8 +87,8 @@ func NewActorFromSnapshot[Ctx any, Evt any](m *Machine[Ctx, Evt], persisted []by
 	if err := json.Unmarshal(persisted, &p); err != nil {
 		return nil, fmt.Errorf("statechart: unmarshal snapshot: %w", err)
 	}
-	if p.Version > SnapshotVersion {
-		return nil, fmt.Errorf("statechart: snapshot version %d is newer than supported %d", p.Version, SnapshotVersion)
+	if p.Version > persist.SnapshotVersion {
+		return nil, fmt.Errorf("statechart: snapshot version %d is newer than supported %d", p.Version, persist.SnapshotVersion)
 	}
 	if p.Version < 1 {
 		return nil, fmt.Errorf("statechart: snapshot version %d is too old (minimum 1)", p.Version)
@@ -128,10 +100,10 @@ func NewActorFromSnapshot[Ctx any, Evt any](m *Machine[Ctx, Evt], persisted []by
 		status:            p.Status,
 		output:            p.Output,
 		errText:           p.Error,
-		armed:             map[TimerID]afterBinding[Ctx, Evt]{},
-		pendingInvokes:    map[InvokeID]invokeBinding[Ctx, Evt]{},
+		armed:             map[effect.TimerID]afterBinding[Ctx, Evt]{},
+		pendingInvokes:    map[effect.InvokeID]invokeBinding[Ctx, Evt]{},
 		historyMemory:     map[*stateNode[Ctx, Evt]]string{},
-		historyDeepMemory: map[*stateNode[Ctx, Evt]]StateValue{},
+		historyDeepMemory: map[*stateNode[Ctx, Evt]]persist.StateValue{},
 	}
 	for path, child := range p.History {
 		node := lookupByPath[Ctx, Evt](m.root, path)
@@ -151,7 +123,7 @@ func NewActorFromSnapshot[Ctx any, Evt any](m *Machine[Ctx, Evt], persisted []by
 	// Re-derive pending effects (timers, invocations) from the active
 	// configuration rather than storing them. Entry actions are NOT re-run;
 	// arming only records intent for the adapter to pull. See ADR-0004.
-	if a.status == StatusRunning {
+	if a.status == persist.StatusRunning {
 		for _, n := range activeConfigNodes[Ctx, Evt](m.root, a.value) {
 			a.armAfterLocked(n)
 			a.armInvokesLocked(n)
@@ -163,7 +135,7 @@ func NewActorFromSnapshot[Ctx any, Evt any](m *Machine[Ctx, Evt], persisted []by
 // activeConfigNodes returns every state node in the active configuration for
 // value v — each active leaf and all of its ancestors (excluding the synthetic
 // root) — so on-entry effects can be re-derived after restore.
-func activeConfigNodes[Ctx any, Evt any](root *stateNode[Ctx, Evt], v StateValue) []*stateNode[Ctx, Evt] {
+func activeConfigNodes[Ctx any, Evt any](root *stateNode[Ctx, Evt], v persist.StateValue) []*stateNode[Ctx, Evt] {
 	leaves := resolveLeaves[Ctx, Evt](root, v)
 	seen := map[*stateNode[Ctx, Evt]]bool{}
 	var out []*stateNode[Ctx, Evt]

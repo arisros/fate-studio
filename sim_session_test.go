@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/describe"
 	"github.com/arisros/fate/render"
 )
 
@@ -238,7 +238,7 @@ func TestServer_DescribeStillWorks(t *testing.T) {
 	resp, _ := http.Get(srv.URL + "/m/traffic-light/describe")
 	b, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	var d sc.MachineDescriptor
+	var d describe.MachineDescriptor
 	if err := json.Unmarshal(b, &d); err != nil || d.ID != "traffic-light" {
 		t.Errorf("describe broke: err=%v id=%q", err, d.ID)
 	}

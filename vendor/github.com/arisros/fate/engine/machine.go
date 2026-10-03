@@ -1,4 +1,4 @@
-package fate
+package engine
 
 import (
 	"fmt"
@@ -7,6 +7,11 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/arisros/fate/action"
+	"github.com/arisros/fate/describe"
+	"github.com/arisros/fate/effect"
+	"github.com/arisros/fate/persist"
 )
 
 // MachineConfig declares an immutable statechart. Pass to CreateMachine to
@@ -62,15 +67,15 @@ type StateNodeConfig[Ctx any, Evt any] struct {
 	// disarmed. The core never executes an invocation — an adapter pulls them
 	// via Actor.PendingInvocations and reports outcomes via
 	// Actor.ResolveInvocation / Actor.RejectInvocation. See ADR-0004.
-	Invoke []Invocation[Ctx, Evt]
+	Invoke []effect.Invocation[Ctx, Evt]
 
 	// Entry actions run, in declaration order, when this state is entered.
 	// For a compound node, Entry runs before the child's Entry.
-	Entry []Action[Ctx, Evt]
+	Entry []action.Action[Ctx, Evt]
 
 	// Exit actions run, in declaration order, when this state is exited.
 	// For a compound node, Exit runs after the child's Exit (deepest first).
-	Exit []Action[Ctx, Evt]
+	Exit []action.Action[Ctx, Evt]
 
 	// OnDone declares transitions to fire when this compound node's active
 	// child reaches a final state. Only meaningful for Type=NodeCompound
@@ -94,7 +99,7 @@ type StateNodeConfig[Ctx any, Evt any] struct {
 
 	// UIState projects the context into a view model while this state is
 	// active. Build it with UIStateOf. See Machine.UIState.
-	UIState *UIState[Ctx]
+	UIState *describe.UIState[Ctx]
 }
 
 // TransitionConfig declares one possible transition for an event.
@@ -112,9 +117,9 @@ type TransitionConfig[Ctx any, Evt any] struct {
 	// Guard, if non-nil, must return true for the transition to be selected.
 	// Otherwise the next candidate in the slice is tried, then ancestors are
 	// consulted. A Guard is a pure predicate over context and event.
-	Guard Guard[Ctx, Evt]
+	Guard action.Guard[Ctx, Evt]
 
-	// GuardName labels Guard in a [MachineDescriptor], and through it in every
+	// GuardName labels Guard in a [describe.MachineDescriptor], and through it in every
 	// rendered diagram. Guard is a func value with no identity a descriptor can
 	// recover, so a guard is unnamed unless it is named here. Optional; an
 	// unnamed guard renders as "".
@@ -124,15 +129,15 @@ type TransitionConfig[Ctx any, Evt any] struct {
 	// configuration (see Cond / StateIn / InState). When both Guard and Cond
 	// are set, the transition is selected only if both pass. Use Cond for
 	// "in state X" checks that a context/event Guard cannot express.
-	Cond Cond
+	Cond action.Cond
 
 	// Actions run after exit actions and before entry actions when the
 	// transition fires. Order: declaration order.
-	Actions []Action[Ctx, Evt]
+	Actions []action.Action[Ctx, Evt]
 
 	// CondMeta documents the context fields Guard checks, for tooling only.
 	// It does not change whether the transition fires. Build it with Gates.
-	CondMeta *CondMeta
+	CondMeta *action.CondMeta
 }
 
 // Machine is an immutable, validated statechart. Safe to share across
@@ -155,8 +160,8 @@ type stateNode[Ctx any, Evt any] struct {
 	parent       *stateNode[Ctx, Evt]
 	children     map[string]*stateNode[Ctx, Evt]
 	on           map[string][]TransitionConfig[Ctx, Evt]
-	entryActions []Action[Ctx, Evt]
-	exitActions  []Action[Ctx, Evt]
+	entryActions []action.Action[Ctx, Evt]
+	exitActions  []action.Action[Ctx, Evt]
 	onDone       []TransitionConfig[Ctx, Evt]
 	history      History // valid when typ == NodeHistory
 	defaultTgt   string  // valid when typ == NodeHistory
@@ -165,11 +170,11 @@ type stateNode[Ctx any, Evt any] struct {
 	// timer arming is deterministic.
 	after []afterEntry[Ctx, Evt]
 	// invokes holds this node's invocations in declaration order.
-	invokes []Invocation[Ctx, Evt]
+	invokes []effect.Invocation[Ctx, Evt]
 	// outputFn builds the machine output when this final state completes at the
 	// top level. nil unless typ == NodeFinal and an Output fn was configured.
 	outputFn func(Ctx) any
-	uiState  *UIState[Ctx]
+	uiState  *describe.UIState[Ctx]
 }
 
 // afterEntry is one delay bucket of a state's delayed transitions.
@@ -188,27 +193,27 @@ func (m *Machine[Ctx, Evt]) initialContext() Ctx { return m.context }
 // initialValue returns the StateValue corresponding to the machine's
 // initial state, recursively descending into the initial child of any
 // compound nodes.
-func (m *Machine[Ctx, Evt]) initialValue() StateValue {
+func (m *Machine[Ctx, Evt]) initialValue() persist.StateValue {
 	return m.root.initialValue()
 }
 
-func (n *stateNode[Ctx, Evt]) initialValue() StateValue {
+func (n *stateNode[Ctx, Evt]) initialValue() persist.StateValue {
 	// Atomic, Final, and History states are leaves from the configuration's
 	// perspective. (History should never actually appear in a committed
 	// value — it is redirected at entry time — but returning a safe value
 	// here protects against ill-formed configs.)
 	if n.typ == NodeAtomic || n.typ == NodeFinal || n.typ == NodeHistory {
-		return AtomicValue(n.name)
+		return persist.AtomicValue(n.name)
 	}
 	if n.typ == NodeParallel {
-		return StateValue{Children: map[string]StateValue{n.name: n.initialInner()}}
+		return persist.StateValue{Children: map[string]persist.StateValue{n.name: n.initialInner()}}
 	}
 	if n.name == "" { // synthetic root
 		child := n.children[n.initial]
 		return child.initialValue()
 	}
 	child := n.children[n.initial]
-	return StateValue{Children: map[string]StateValue{n.name: child.initialValue()}}
+	return persist.StateValue{Children: map[string]persist.StateValue{n.name: child.initialValue()}}
 }
 
 // initialInner returns the StateValue *inside* this node's wrap — i.e.,
@@ -222,23 +227,23 @@ func (n *stateNode[Ctx, Evt]) initialValue() StateValue {
 //
 // Symmetric with initialValue: initialValue(n) returns
 // `{Children: {n.name: n.initialInner()}}` for non-atomic nodes.
-func (n *stateNode[Ctx, Evt]) initialInner() StateValue {
+func (n *stateNode[Ctx, Evt]) initialInner() persist.StateValue {
 	if n.typ == NodeAtomic || n.typ == NodeFinal || n.typ == NodeHistory {
-		return AtomicValue(n.name)
+		return persist.AtomicValue(n.name)
 	}
 	if n.typ == NodeParallel {
-		regions := make(map[string]StateValue, len(n.children))
+		regions := make(map[string]persist.StateValue, len(n.children))
 		for childName, child := range n.children {
 			regions[childName] = child.initialInner()
 		}
-		return StateValue{Children: regions}
+		return persist.StateValue{Children: regions}
 	}
 	// Compound: descend into initial. The active child's initialValue()
 	// includes its own self-wrap, which becomes the Children key at this
 	// node's level.
 	child := n.children[n.initial]
 	if child == nil {
-		return AtomicValue(n.name)
+		return persist.AtomicValue(n.name)
 	}
 	return child.initialValue()
 }
@@ -385,7 +390,7 @@ func buildAfterEntries[Ctx any, Evt any](m map[time.Duration][]TransitionConfig[
 
 // validateInvocations checks a state's invocations: each must have a non-empty
 // Src and a unique, non-empty ID within the state.
-func validateInvocations[Ctx any, Evt any](statePath string, invs []Invocation[Ctx, Evt]) error {
+func validateInvocations[Ctx any, Evt any](statePath string, invs []effect.Invocation[Ctx, Evt]) error {
 	if len(invs) == 0 {
 		return nil
 	}
@@ -408,7 +413,7 @@ func validateInvocations[Ctx any, Evt any](statePath string, invs []Invocation[C
 // sealNode validates the node's tooling metadata and gives the node its own
 // copies of the transitions that carry CondMeta.
 func sealNode[Ctx any, Evt any](node *stateNode[Ctx, Evt], statePath string, cfg StateNodeConfig[Ctx, Evt]) error {
-	if cfg.UIState != nil && cfg.UIState.fn == nil {
+	if cfg.UIState != nil && !cfg.UIState.Valid() {
 		return fmt.Errorf("%w: state %q has a UIState not built with UIStateOf", ErrInvalidConfig, statePath)
 	}
 	for _, delay := range slices.Sorted(maps.Keys(cfg.After)) {
@@ -442,9 +447,9 @@ func sealTransitions[Ctx any, Evt any](where string, ts []TransitionConfig[Ctx, 
 	}
 	out := slices.Clone(ts)
 	for i := range out {
-		meta, err := out[i].CondMeta.seal(fmt.Sprintf("%s candidate %d", where, i))
+		meta, err := out[i].CondMeta.Seal()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %s candidate %d %v", ErrInvalidConfig, where, i, err)
 		}
 		out[i].CondMeta = meta
 	}

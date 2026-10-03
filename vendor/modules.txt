@@ -1,5 +1,9 @@
-# github.com/arisros/fate v0.5.1
+# github.com/arisros/fate v0.6.0
 ## explicit; go 1.24
-github.com/arisros/fate
+github.com/arisros/fate/action
+github.com/arisros/fate/describe
+github.com/arisros/fate/effect
+github.com/arisros/fate/engine
 github.com/arisros/fate/internal
+github.com/arisros/fate/persist
 github.com/arisros/fate/render

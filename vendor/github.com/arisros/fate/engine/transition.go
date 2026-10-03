@@ -1,4 +1,6 @@
-package fate
+package engine
+
+import "github.com/arisros/fate/persist"
 
 // SelectedTransition records the outcome of selectTransitions per active
 // leaf: the resolved source node and the matching transition config.
@@ -16,7 +18,7 @@ type SelectedTransition[Ctx any, Evt any] struct {
 // is registered exactly once even if reached from multiple leaves.
 func selectTransitions[Ctx any, Evt any](
 	root *stateNode[Ctx, Evt],
-	current StateValue,
+	current persist.StateValue,
 	ctx Ctx,
 	evt Evt,
 	eventName string,
@@ -55,7 +57,7 @@ func selectTransitions[Ctx any, Evt any](
 // deterministic choice (alphabetically-first region) so legacy single-leaf
 // call sites still produce reasonable output. Use resolveLeaves for
 // parallel-aware iteration.
-func resolveLeaf[Ctx any, Evt any](root *stateNode[Ctx, Evt], v StateValue) *stateNode[Ctx, Evt] {
+func resolveLeaf[Ctx any, Evt any](root *stateNode[Ctx, Evt], v persist.StateValue) *stateNode[Ctx, Evt] {
 	leaves := resolveLeaves[Ctx, Evt](root, v)
 	if len(leaves) == 0 {
 		return nil
@@ -66,7 +68,7 @@ func resolveLeaf[Ctx any, Evt any](root *stateNode[Ctx, Evt], v StateValue) *sta
 // resolveLeaves walks a StateValue against the validated node tree and
 // returns every active leaf state node, in deterministic (alphabetical)
 // path order. For non-parallel configurations the slice has length 1.
-func resolveLeaves[Ctx any, Evt any](root *stateNode[Ctx, Evt], v StateValue) []*stateNode[Ctx, Evt] {
+func resolveLeaves[Ctx any, Evt any](root *stateNode[Ctx, Evt], v persist.StateValue) []*stateNode[Ctx, Evt] {
 	var out []*stateNode[Ctx, Evt]
 	walkValue[Ctx, Evt](root, v, &out)
 	return out
@@ -75,7 +77,7 @@ func resolveLeaves[Ctx any, Evt any](root *stateNode[Ctx, Evt], v StateValue) []
 // walkValue descends into v against parent and appends every reached leaf
 // node (atomic or final) to *out. Map keys are visited in alphabetical
 // order so the resulting slice is deterministic.
-func walkValue[Ctx any, Evt any](parent *stateNode[Ctx, Evt], v StateValue, out *[]*stateNode[Ctx, Evt]) {
+func walkValue[Ctx any, Evt any](parent *stateNode[Ctx, Evt], v persist.StateValue, out *[]*stateNode[Ctx, Evt]) {
 	// If we've recursed all the way into a terminal-shaped node, we ARE the
 	// leaf; any redundant value (e.g. AtomicValue(parent.name) from an
 	// atomic parallel region) is ignored.
@@ -96,7 +98,7 @@ func walkValue[Ctx any, Evt any](parent *stateNode[Ctx, Evt], v StateValue, out 
 			*out = append(*out, child)
 		case NodeCompound:
 			if init, ok := child.children[child.initial]; ok {
-				walkValue[Ctx, Evt](child, AtomicValue(init.name), out)
+				walkValue[Ctx, Evt](child, persist.AtomicValue(init.name), out)
 			}
 		case NodeParallel:
 			walkValue[Ctx, Evt](child, child.initialInner(), out)
@@ -141,9 +143,9 @@ func sortStrings(s []string) {
 //     AtomicValue(leafName) (no extra Children wrap).
 func commitValue[Ctx any, Evt any](
 	root *stateNode[Ctx, Evt],
-	current StateValue,
+	current persist.StateValue,
 	target *stateNode[Ctx, Evt],
-) StateValue {
+) persist.StateValue {
 	if len(target.path) == 0 {
 		return current
 	}
@@ -153,10 +155,10 @@ func commitValue[Ctx any, Evt any](
 // commitDescend returns the value-INSIDE `parent` after applying the path.
 func commitDescend[Ctx any, Evt any](
 	parent *stateNode[Ctx, Evt],
-	currentInside StateValue,
+	currentInside persist.StateValue,
 	pathRemaining []string,
 	target *stateNode[Ctx, Evt],
-) StateValue {
+) persist.StateValue {
 	if len(pathRemaining) == 0 {
 		return target.initialInner()
 	}
@@ -167,11 +169,11 @@ func commitDescend[Ctx any, Evt any](
 	}
 	rest := pathRemaining[1:]
 
-	var newChildEntry StateValue
+	var newChildEntry persist.StateValue
 	if len(rest) == 0 {
 		newChildEntry = nextNode.initialInner()
 	} else {
-		var nestedCurrent StateValue
+		var nestedCurrent persist.StateValue
 		if currentInside.Children != nil {
 			nestedCurrent = currentInside.Children[nextName]
 		}
@@ -180,7 +182,7 @@ func commitDescend[Ctx any, Evt any](
 
 	switch parent.typ {
 	case NodeParallel:
-		regions := make(map[string]StateValue, len(parent.children))
+		regions := make(map[string]persist.StateValue, len(parent.children))
 		for childName, childNode := range parent.children {
 			if childName == nextName {
 				regions[childName] = newChildEntry
@@ -194,15 +196,15 @@ func commitDescend[Ctx any, Evt any](
 			}
 			regions[childName] = childNode.initialInner()
 		}
-		return StateValue{Children: regions}
+		return persist.StateValue{Children: regions}
 	default:
 		// Compound parent (including synthetic root). When the new active
 		// child is atomic-shaped, parent's value-inside is the bare leaf;
 		// when it's a deeper structure, wrap with the active child's name.
 		if nextNode.typ == NodeAtomic || nextNode.typ == NodeFinal || nextNode.typ == NodeHistory {
-			return AtomicValue(nextName)
+			return persist.AtomicValue(nextName)
 		}
-		return StateValue{Children: map[string]StateValue{nextName: newChildEntry}}
+		return persist.StateValue{Children: map[string]persist.StateValue{nextName: newChildEntry}}
 	}
 }
 
@@ -216,9 +218,9 @@ func commitDescend[Ctx any, Evt any](
 // back to spliceValueAt to restore the subtree.
 func extractValueAt[Ctx any, Evt any](
 	root *stateNode[Ctx, Evt],
-	value StateValue,
+	value persist.StateValue,
 	target *stateNode[Ctx, Evt],
-) (StateValue, bool) {
+) (persist.StateValue, bool) {
 	if target == nil || target == root {
 		return value, true
 	}
@@ -226,13 +228,13 @@ func extractValueAt[Ctx any, Evt any](
 	for _, segment := range target.path {
 		if cursor.IsAtomic() {
 			if cursor.Leaf == segment {
-				return AtomicValue(cursor.Leaf), true
+				return persist.AtomicValue(cursor.Leaf), true
 			}
-			return StateValue{}, false
+			return persist.StateValue{}, false
 		}
 		child, ok := cursor.Children[segment]
 		if !ok {
-			return StateValue{}, false
+			return persist.StateValue{}, false
 		}
 		cursor = child
 	}
@@ -250,10 +252,10 @@ func extractValueAt[Ctx any, Evt any](
 // in practice because the parent compound was just (re-)entered).
 func spliceValueAt[Ctx any, Evt any](
 	root *stateNode[Ctx, Evt],
-	value StateValue,
+	value persist.StateValue,
 	target *stateNode[Ctx, Evt],
-	newInside StateValue,
-) StateValue {
+	newInside persist.StateValue,
+) persist.StateValue {
 	if target == nil || target == root {
 		return newInside
 	}
@@ -265,7 +267,7 @@ func spliceValueAt[Ctx any, Evt any](
 // parents) are preserved. The function assumes `current` reflects the value
 // rooted at `parent` in the caller (i.e., the value-inside the synthetic
 // root for path[0], the value-inside path[0]'s node for path[1], etc.).
-func spliceDescend(current StateValue, pathRemaining []string, replacement StateValue) StateValue {
+func spliceDescend(current persist.StateValue, pathRemaining []string, replacement persist.StateValue) persist.StateValue {
 	if len(pathRemaining) == 0 {
 		return replacement
 	}
@@ -290,7 +292,7 @@ func spliceDescend(current StateValue, pathRemaining []string, replacement State
 	if _, present := current.Children[head]; !present {
 		return current
 	}
-	newChildren := make(map[string]StateValue, len(current.Children))
+	newChildren := make(map[string]persist.StateValue, len(current.Children))
 	for k, v := range current.Children {
 		if k == head {
 			if len(rest) == 0 {
@@ -302,5 +304,20 @@ func spliceDescend(current StateValue, pathRemaining []string, replacement State
 			newChildren[k] = v
 		}
 	}
-	return StateValue{Children: newChildren}
+	return persist.StateValue{Children: newChildren}
+}
+
+// transitionPasses reports whether a transition's combined Guard and Cond admit
+// it for the given context, event, and active configuration. A nil Guard or nil
+// Cond is treated as "always passes". Centralised here so every selection site
+// (event handling, wildcard, onDone, and after timers) applies identical
+// semantics.
+func transitionPasses[Ctx any, Evt any](t TransitionConfig[Ctx, Evt], ctx Ctx, evt Evt, value persist.StateValue) bool {
+	if t.Guard != nil && !t.Guard(ctx, evt) {
+		return false
+	}
+	if t.Cond != nil && !t.Cond.Matches(value) {
+		return false
+	}
+	return true
 }

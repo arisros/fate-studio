@@ -1,4 +1,4 @@
-package fate
+package describe
 
 import (
 	"encoding"
@@ -22,7 +22,7 @@ type UIState[Ctx any] struct {
 // call time:
 //
 //	StateNodeConfig[Ctx, Evt]{
-//		UIState: fate.UIStateOf(func(c Ctx) ReviewView {
+//		UIState: describe.UIStateOf(func(c Ctx) ReviewView {
 //			return ReviewView{Score: c.Score, Status: c.Status}
 //		}),
 //	}
@@ -51,51 +51,11 @@ func (u *UIState[Ctx]) Schema() json.RawMessage {
 	return cloneRaw(u.schema)
 }
 
-// UIState evaluates the view models of the active configuration v against ctx,
-// keyed by the dot path of the state that declares each one.
-//
-// For each active leaf, the nearest state on its path (the leaf itself or an
-// ancestor) that declares a UIState contributes, once even when several leaves
-// share it. The result is nil when no active state declares one. A view model
-// that fails to marshal, or whose function panics, returns an error naming the
-// state.
-func (m *Machine[Ctx, Evt]) UIState(v StateValue, ctx Ctx) (map[string]json.RawMessage, error) {
-	var out map[string]json.RawMessage
-	for _, leaf := range resolveLeaves[Ctx, Evt](m.root, v) {
-		for n := leaf; n != nil; n = n.parent {
-			if n.uiState == nil {
-				continue
-			}
-			key := strings.Join(n.path, ".")
-			if _, done := out[key]; done {
-				break
-			}
-			b, err := evalUIState(key, n.uiState, ctx)
-			if err != nil {
-				return nil, err
-			}
-			if out == nil {
-				out = map[string]json.RawMessage{}
-			}
-			out[key] = b
-			break
-		}
-	}
-	return out, nil
-}
+// Valid reports whether u was built with UIStateOf.
+func (u *UIState[Ctx]) Valid() bool { return u != nil && u.fn != nil }
 
-func evalUIState[Ctx any](path string, u *UIState[Ctx], ctx Ctx) (b json.RawMessage, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("fate: ui state of %q panicked: %v", path, r)
-		}
-	}()
-	b, err = json.Marshal(u.fn(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("fate: ui state of %q: %w", path, err)
-	}
-	return b, nil
-}
+// Eval projects ctx into the view model.
+func (u *UIState[Ctx]) Eval(ctx Ctx) any { return u.fn(ctx) }
 
 func cloneRaw(b json.RawMessage) json.RawMessage {
 	if b == nil {

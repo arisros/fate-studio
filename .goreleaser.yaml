@@ -8,7 +8,7 @@ version: 2
 project_name: fate-studio
 
 # No `before` hooks: the engine dependency is vendored, so the build is hermetic
-# and must not reach the network (the engine repo is private).
+# and must not reach the network.
 
 builds:
   - id: fate-studio
