@@ -1,4 +1,6 @@
-package fate
+package action
+
+import "github.com/arisros/fate/internal"
 
 // Action is something executed as part of a transition or on state entry /
 // exit. Actions may update the context, raise internal events, or log;
@@ -6,16 +8,21 @@ package fate
 // time and randomness.
 //
 // Action is an interface because we want polymorphic concrete types
-// (assignAction, raiseAction, etc.) while keeping the API ergonomic.
+// (assignAction, raiseAction, etc.) while keeping the API ergonomic. The
+// constructors in this package cover the built-in kinds; the engine is the
+// only caller of Apply.
 type Action[Ctx any, Evt any] interface {
-	apply(ctx Ctx, evt Evt, sink actionSink[Ctx, Evt]) Ctx
+	// Apply runs the action against ctx for evt and returns the new context.
+	Apply(ctx Ctx, evt Evt, sink Sink[Evt]) Ctx
 }
 
-// actionSink is the surface actions use to express side effects on the
-// actor's internal queues. Implemented by the actor; not exposed to users.
-type actionSink[Ctx any, Evt any] interface {
-	raise(Evt)
-	log(string)
+// Sink is the surface actions use to express side effects on the actor's
+// internal queues. The actor implements it and passes it to [Action.Apply].
+type Sink[Evt any] interface {
+	// Raise places evt on the actor's internal queue.
+	Raise(evt Evt)
+	// Log routes msg to the actor's logger.
+	Log(msg string)
 }
 
 // Assign returns an action that replaces the context with the result of fn.
@@ -32,14 +39,15 @@ type assignAction[Ctx any, Evt any] struct {
 	fn func(Ctx, Evt) Ctx
 }
 
-func (a assignAction[Ctx, Evt]) apply(c Ctx, e Evt, _ actionSink[Ctx, Evt]) Ctx {
+// Apply implements [Action].
+func (a assignAction[Ctx, Evt]) Apply(c Ctx, e Evt, _ Sink[Evt]) Ctx {
 	if a.fn == nil {
 		return c
 	}
 	return a.fn(c, e)
 }
 
-// ImplName reports the label this action carries in a [MachineDescriptor], and
+// ImplName reports the label this action carries in a describe.MachineDescriptor, and
 // through it in every rendered diagram. An assignment is an opaque closure, so
 // the label names the kind rather than the effect; wrap it in [Named] to say
 // what the assignment does.
@@ -56,16 +64,17 @@ type raiseAction[Ctx any, Evt any] struct {
 	evt Evt
 }
 
-func (a raiseAction[Ctx, Evt]) apply(c Ctx, _ Evt, sink actionSink[Ctx, Evt]) Ctx {
-	sink.raise(a.evt)
+// Apply implements [Action].
+func (a raiseAction[Ctx, Evt]) Apply(c Ctx, _ Evt, sink Sink[Evt]) Ctx {
+	sink.Raise(a.evt)
 	return c
 }
 
-// ImplName reports the label this action carries in a [MachineDescriptor]. The
+// ImplName reports the label this action carries in a describe.MachineDescriptor. The
 // raised event is known statically, so the label names it: "raise:CANCEL". An
 // event whose name cannot be resolved degrades to a bare "raise".
 func (a raiseAction[Ctx, Evt]) ImplName() string {
-	if name := eventNameOf(a.evt); name != "" {
+	if name := internal.EventName(a.evt); name != "" {
 		return "raise:" + name
 	}
 	return "raise"
@@ -81,22 +90,23 @@ type logAction[Ctx any, Evt any] struct {
 	msg string
 }
 
-func (a logAction[Ctx, Evt]) apply(c Ctx, _ Evt, sink actionSink[Ctx, Evt]) Ctx {
-	sink.log(a.msg)
+// Apply implements [Action].
+func (a logAction[Ctx, Evt]) Apply(c Ctx, _ Evt, sink Sink[Evt]) Ctx {
+	sink.Log(a.msg)
 	return c
 }
 
-// ImplName reports the label this action carries in a [MachineDescriptor]. The
+// ImplName reports the label this action carries in a describe.MachineDescriptor. The
 // message is not included, because a log line is often long enough to overwhelm
 // a diagram edge.
 func (a logAction[Ctx, Evt]) ImplName() string { return "log" }
 
 // Named labels an action so it appears under that name in a
-// [MachineDescriptor], and through it in every rendered diagram. The built-in
+// describe.MachineDescriptor, and through it in every rendered diagram. The built-in
 // actions name their kind ("assign", "raise:CANCEL", "log"), which says what an
 // action is but not what it does; Named is how a machine says the latter:
 //
-//	fate.Named("lockApplication", fate.Assign(func(c Ctx, _ Evt) Ctx {
+//	action.Named("lockApplication", action.Assign(func(c Ctx, _ Evt) Ctx {
 //	    c.Locked = true
 //	    return c
 //	}))
@@ -112,13 +122,15 @@ type namedAction[Ctx any, Evt any] struct {
 	inner Action[Ctx, Evt]
 }
 
-func (a namedAction[Ctx, Evt]) apply(c Ctx, e Evt, sink actionSink[Ctx, Evt]) Ctx {
+// Apply implements [Action].
+func (a namedAction[Ctx, Evt]) Apply(c Ctx, e Evt, sink Sink[Evt]) Ctx {
 	if a.inner == nil {
 		return c
 	}
-	return a.inner.apply(c, e, sink)
+	return a.inner.Apply(c, e, sink)
 }
 
+// ImplName reports the caller-chosen label.
 func (a namedAction[Ctx, Evt]) ImplName() string { return a.name }
 
 // Enqueuer is the surface inside an EnqueueActions block. It batches a series
@@ -128,7 +140,7 @@ func (a namedAction[Ctx, Evt]) ImplName() string { return a.name }
 type Enqueuer[Ctx any, Evt any] struct {
 	ctx     Ctx
 	evt     Evt
-	sink    actionSink[Ctx, Evt]
+	sink    Sink[Evt]
 	pending []Evt
 }
 
@@ -146,7 +158,7 @@ func (e *Enqueuer[Ctx, Evt]) Raise(evt Evt) {
 
 // Log emits a log message immediately.
 func (e *Enqueuer[Ctx, Evt]) Log(msg string) {
-	e.sink.log(msg)
+	e.sink.Log(msg)
 }
 
 // Context returns the in-progress context value. Useful for reading
@@ -164,19 +176,20 @@ type enqueueAction[Ctx any, Evt any] struct {
 	fn func(*Enqueuer[Ctx, Evt])
 }
 
-func (a enqueueAction[Ctx, Evt]) apply(c Ctx, e Evt, sink actionSink[Ctx, Evt]) Ctx {
+// Apply implements [Action].
+func (a enqueueAction[Ctx, Evt]) Apply(c Ctx, e Evt, sink Sink[Evt]) Ctx {
 	if a.fn == nil {
 		return c
 	}
 	enq := &Enqueuer[Ctx, Evt]{ctx: c, evt: e, sink: sink}
 	a.fn(enq)
 	for _, raised := range enq.pending {
-		sink.raise(raised)
+		sink.Raise(raised)
 	}
 	return enq.ctx
 }
 
-// ImplName reports the label this action carries in a [MachineDescriptor]. The
+// ImplName reports the label this action carries in a describe.MachineDescriptor. The
 // batch is an opaque closure, so the label names the kind; wrap it in [Named] to
 // say what the batch does.
 func (a enqueueAction[Ctx, Evt]) ImplName() string { return "enqueue" }

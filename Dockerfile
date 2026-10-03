@@ -4,7 +4,7 @@
 #   docker run --rm -p 8090:8090 fate-studio
 #
 # The engine dependency is vendored, so the build is hermetic — no module
-# downloads, no access to the (private) engine repository required. The result
+# downloads, no network access required. The result
 # is a single static binary on distroless (no shell, non-root).
 FROM golang:1.24-alpine AS build
 WORKDIR /src

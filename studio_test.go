@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	sc "github.com/arisros/fate"
+	"github.com/arisros/fate/describe"
+	"github.com/arisros/fate/engine"
 
 	studio "github.com/arisros/fate-studio"
 )
@@ -20,14 +21,14 @@ type tlNext struct{}
 func (tlNext) isTLEvt()          {}
 func (tlNext) EventName() string { return "NEXT" }
 
-func trafficLight() *sc.Machine[tlCtx, tlEvt] {
-	m, err := sc.CreateMachine(sc.MachineConfig[tlCtx, tlEvt]{
+func trafficLight() *engine.Machine[tlCtx, tlEvt] {
+	m, err := engine.CreateMachine(engine.MachineConfig[tlCtx, tlEvt]{
 		ID:      "traffic-light",
 		Initial: "red",
-		States: map[string]sc.StateNodeConfig[tlCtx, tlEvt]{
-			"red":    {On: map[string][]sc.TransitionConfig[tlCtx, tlEvt]{"NEXT": {{Target: "green"}}}},
-			"green":  {On: map[string][]sc.TransitionConfig[tlCtx, tlEvt]{"NEXT": {{Target: "yellow"}}}},
-			"yellow": {On: map[string][]sc.TransitionConfig[tlCtx, tlEvt]{"NEXT": {{Target: "red"}}}},
+		States: map[string]engine.StateNodeConfig[tlCtx, tlEvt]{
+			"red":    {On: map[string][]engine.TransitionConfig[tlCtx, tlEvt]{"NEXT": {{Target: "green"}}}},
+			"green":  {On: map[string][]engine.TransitionConfig[tlCtx, tlEvt]{"NEXT": {{Target: "yellow"}}}},
+			"yellow": {On: map[string][]engine.TransitionConfig[tlCtx, tlEvt]{"NEXT": {{Target: "red"}}}},
 		},
 	})
 	if err != nil {
@@ -177,7 +178,7 @@ func TestServer_DescribeJSON(t *testing.T) {
 	if rr.Code != 200 {
 		t.Fatalf("describe: code=%d", rr.Code)
 	}
-	var d sc.MachineDescriptor
+	var d describe.MachineDescriptor
 	if err := json.Unmarshal(rr.Body.Bytes(), &d); err != nil {
 		t.Fatalf("descriptor unmarshal: %v", err)
 	}
@@ -202,16 +203,16 @@ func (ancAbort) EventName() string { return "ABORT" }
 // leaf. The engine resolves an event by walking the active leaf up through its
 // ancestors, so ABORT is sendable while sitting in "work.one" even though the
 // leaf itself declares no such transition.
-func ancestorMachine() *sc.Machine[ancCtx, ancEvt] {
-	m, err := sc.CreateMachine(sc.MachineConfig[ancCtx, ancEvt]{
+func ancestorMachine() *engine.Machine[ancCtx, ancEvt] {
+	m, err := engine.CreateMachine(engine.MachineConfig[ancCtx, ancEvt]{
 		ID:      "ancestor",
 		Initial: "work",
-		States: map[string]sc.StateNodeConfig[ancCtx, ancEvt]{
+		States: map[string]engine.StateNodeConfig[ancCtx, ancEvt]{
 			"work": {
 				Initial: "one",
-				On:      map[string][]sc.TransitionConfig[ancCtx, ancEvt]{"ABORT": {{Target: "cancelled"}}},
-				States: map[string]sc.StateNodeConfig[ancCtx, ancEvt]{
-					"one": {On: map[string][]sc.TransitionConfig[ancCtx, ancEvt]{"STEP": {{Target: "two"}}}},
+				On:      map[string][]engine.TransitionConfig[ancCtx, ancEvt]{"ABORT": {{Target: "cancelled"}}},
+				States: map[string]engine.StateNodeConfig[ancCtx, ancEvt]{
+					"one": {On: map[string][]engine.TransitionConfig[ancCtx, ancEvt]{"STEP": {{Target: "two"}}}},
 					"two": {},
 				},
 			},

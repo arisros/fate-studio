@@ -1,8 +1,10 @@
-package fate
+package engine
 
 import (
 	"fmt"
 	"sort"
+
+	"github.com/arisros/fate/action"
 )
 
 // Setup is a type-safe registry of named guards and actions, mirroring
@@ -14,18 +16,18 @@ import (
 // Setup is sugar over [CreateMachine]; it adds no semantics the declarative
 // config cannot express. A typical use:
 //
-//	s := fate.NewSetup[Ctx, Evt]().
+//	s := engine.NewSetup[Ctx, Evt]().
 //		WithGuard("isHighRisk", func(c Ctx, _ Evt) bool { return c.Risk == "HIGH" }).
-//		WithAction("clearForm", fate.Assign(func(c Ctx, _ Evt) Ctx { c.Form = nil; return c }))
+//		WithAction("clearForm", action.Assign(func(c Ctx, _ Evt) Ctx { c.Form = nil; return c }))
 //
-//	m, err := s.CreateMachine(fate.MachineConfig[Ctx, Evt]{
+//	m, err := s.CreateMachine(engine.MachineConfig[Ctx, Evt]{
 //		ID: "review", Initial: "open",
-//		States: map[string]fate.StateNodeConfig[Ctx, Evt]{
-//			"open": {On: map[string][]fate.TransitionConfig[Ctx, Evt]{
+//		States: map[string]engine.StateNodeConfig[Ctx, Evt]{
+//			"open": {On: map[string][]engine.TransitionConfig[Ctx, Evt]{
 //				"NEXT": {{Target: "closed", Guard: s.Guard("isHighRisk"),
-//					Actions: []fate.Action[Ctx, Evt]{s.Action("clearForm")}}},
+//					Actions: []action.Action[Ctx, Evt]{s.Action("clearForm")}}},
 //			}},
-//			"closed": {Type: fate.NodeFinal},
+//			"closed": {Type: engine.NodeFinal},
 //		},
 //	})
 //
@@ -33,8 +35,8 @@ import (
 // [Setup.CreateMachine], so typos surface at construction time rather than
 // silently doing nothing.
 type Setup[Ctx any, Evt any] struct {
-	guards  map[string]Guard[Ctx, Evt]
-	actions map[string]Action[Ctx, Evt]
+	guards  map[string]action.Guard[Ctx, Evt]
+	actions map[string]action.Action[Ctx, Evt]
 	missing map[string]struct{} // names referenced but not registered
 }
 
@@ -42,22 +44,22 @@ type Setup[Ctx any, Evt any] struct {
 // and [Setup.WithAction] (both chainable).
 func NewSetup[Ctx any, Evt any]() *Setup[Ctx, Evt] {
 	return &Setup[Ctx, Evt]{
-		guards:  map[string]Guard[Ctx, Evt]{},
-		actions: map[string]Action[Ctx, Evt]{},
+		guards:  map[string]action.Guard[Ctx, Evt]{},
+		actions: map[string]action.Action[Ctx, Evt]{},
 		missing: map[string]struct{}{},
 	}
 }
 
 // WithGuard registers a guard under name and returns the Setup for chaining.
 // Registering the same name twice replaces the earlier guard.
-func (s *Setup[Ctx, Evt]) WithGuard(name string, g Guard[Ctx, Evt]) *Setup[Ctx, Evt] {
+func (s *Setup[Ctx, Evt]) WithGuard(name string, g action.Guard[Ctx, Evt]) *Setup[Ctx, Evt] {
 	s.guards[name] = g
 	return s
 }
 
 // WithAction registers an action under name and returns the Setup for chaining.
 // Registering the same name twice replaces the earlier action.
-func (s *Setup[Ctx, Evt]) WithAction(name string, a Action[Ctx, Evt]) *Setup[Ctx, Evt] {
+func (s *Setup[Ctx, Evt]) WithAction(name string, a action.Action[Ctx, Evt]) *Setup[Ctx, Evt] {
 	s.actions[name] = a
 	return s
 }
@@ -66,7 +68,7 @@ func (s *Setup[Ctx, Evt]) WithAction(name string, a Action[Ctx, Evt]) *Setup[Ctx
 // [TransitionConfig]. If no guard is registered under name, Guard records the
 // missing reference (so [Setup.CreateMachine] returns an error) and returns a
 // guard that never passes, keeping config construction safe to continue.
-func (s *Setup[Ctx, Evt]) Guard(name string) Guard[Ctx, Evt] {
+func (s *Setup[Ctx, Evt]) Guard(name string) action.Guard[Ctx, Evt] {
 	if g, ok := s.guards[name]; ok {
 		return g
 	}
@@ -80,14 +82,14 @@ func (s *Setup[Ctx, Evt]) Guard(name string) Guard[Ctx, Evt] {
 // an error) and returns a no-op action.
 //
 // The returned action carries name, so it appears under that name in a
-// [MachineDescriptor] and in every rendered diagram, without the caller
-// repeating it through [Named]. Wrapping does not change how the action runs.
-func (s *Setup[Ctx, Evt]) Action(name string) Action[Ctx, Evt] {
+// describe.MachineDescriptor and in every rendered diagram, without the caller
+// repeating it through [action.Named]. Wrapping does not change how the action runs.
+func (s *Setup[Ctx, Evt]) Action(name string) action.Action[Ctx, Evt] {
 	if a, ok := s.actions[name]; ok {
-		return Named(name, a)
+		return action.Named(name, a)
 	}
 	s.missing["action:"+name] = struct{}{}
-	return Named[Ctx, Evt](name, nil)
+	return action.Named[Ctx, Evt](name, nil)
 }
 
 // CreateMachine validates and builds the machine, first reporting any guard or
