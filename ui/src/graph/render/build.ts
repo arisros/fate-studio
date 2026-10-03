@@ -1,4 +1,3 @@
-import { MarkerType } from "@xyflow/react";
 import type { ViewModel } from "../model/viewModel";
 import type { RelPos } from "../layout/elkEngine";
 import type { ActiveSet } from "../active";
@@ -55,7 +54,6 @@ export function buildEdges(vm: ViewModel, active: ActiveSet, compact: boolean): 
       // In compact/overview mode: hide self-loops (structural noise) and drop
       // edge labels so the flow diagram stays uncluttered.
       hidden: e.global || (compact && e.selfLoop),
-      markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
       zIndex: 10,
       animated: srcActive,
       data: {

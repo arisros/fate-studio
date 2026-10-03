@@ -304,8 +304,7 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
         zoomable
         nodeColor={(n: Node) => {
           if (n.type === "parallel") return "rgba(194,239,78,0.30)";
-          if (n.type === "final") return "rgba(110,231,183,0.40)";
-          return "rgba(255,255,255,0.08)";
+          return "rgba(106,95,193,0.35)";
         }}
         maskColor="rgba(0,0,0,0.60)"
       />
