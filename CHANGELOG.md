@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/arisros/fate-studio/compare/v0.4.0...v0.5.0) (2026-10-03)
+
+
+### Added
+
+* **ui:** redraw the chart and brand around the new mark ([#10](https://github.com/arisros/fate-studio/issues/10)) ([21f3c4a](https://github.com/arisros/fate-studio/commit/21f3c4a04497a03f0e5cd6bead13c0092a72a0c6))
+
 ## [0.4.0](https://github.com/arisros/fate-studio/compare/v0.3.0...v0.4.0) (2026-09-18)
 
 
