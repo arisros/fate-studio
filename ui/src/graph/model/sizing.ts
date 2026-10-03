@@ -6,11 +6,12 @@ export const NODE_W = 280;
 export const HEADER_H = 40; // header band height
 export const ROW_H = 36; // one transition row (tall enough for event + optional action sub-line)
 export const PAD = 10; // bottom padding under the last row
+export const BADGES_H = 30; // one line of global-event badges under the rows
 
 // ELK layout caps at this many rows; extra rows appear via overflow-y scroll inside the node.
 export const MAX_LAYOUT_ROWS = 10;
 
-/** Height of a leaf node showing `rowCount` transition rows. */
-export function leafHeight(rowCount: number): number {
-  return HEADER_H + Math.min(rowCount, MAX_LAYOUT_ROWS) * ROW_H + PAD;
+/** Height of a leaf node showing `rowCount` transition rows, plus a badge line when it has one. */
+export function leafHeight(rowCount: number, badges = false): number {
+  return HEADER_H + Math.min(rowCount, MAX_LAYOUT_ROWS) * ROW_H + PAD + (badges ? BADGES_H : 0);
 }

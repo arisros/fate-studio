@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { buildNodes, buildEdges, buildRouterEdges } from "./build";
+import { buildNodes, buildEdges, buildObstacles, buildRouterEdges } from "./build";
 import { buildViewModel } from "../model/viewModel";
 import { runLayout } from "../layout/elkEngine";
 import { activeFromPath } from "../active";
 import { rowHandleId, COMPACT_SOURCE_ID, rowCenterY } from "../model/handles";
 import type { Graph } from "../../types";
 import order from "../__fixtures__/order.graph.json";
+import editor from "../__fixtures__/editor.graph.json";
+import { HEADER_H } from "../model/sizing";
 
 const g = order as Graph;
 const vm = buildViewModel(g);
@@ -50,4 +52,17 @@ describe("buildNodes (order)", () => {
     expect(leaf.extent).toBe("parent");
     expect((leaf.style!.width as number)).toBeGreaterThan(0);
   }, 20000);
+});
+
+describe("buildObstacles (editor)", () => {
+  it("blocks leaves and a titled compound's header band, never a whole container", async () => {
+    const evm = buildViewModel(editor as Graph);
+    const layout = await runLayout(evm, false);
+    const obs = buildObstacles(evm, layout.abs);
+    expect(obs.has("s_session_editing_draft")).toBe(true);
+    expect(obs.has("s_session_editing")).toBe(false);
+    expect(obs.has("s_session")).toBe(false);
+    expect(obs.get("s_session_editing#header")).toMatchObject({ h: HEADER_H, w: layout.abs.get("s_session_editing")!.w });
+    expect(obs.has("s_session#header")).toBe(false);
+  });
 });
