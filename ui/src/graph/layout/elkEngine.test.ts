@@ -3,6 +3,10 @@ import { runLayout, flatten, absFromRel } from "./elkEngine";
 import { buildViewModel } from "../model/viewModel";
 import type { Graph } from "../../types";
 import order from "../__fixtures__/order.graph.json";
+import editor from "../__fixtures__/editor.graph.json";
+import mediaPlayer from "../__fixtures__/media-player.graph.json";
+import ticket from "../__fixtures__/ticket.graph.json";
+import { ROUTER_PAD } from "../routing/libavoidConfig";
 
 describe("absFromRel", () => {
   it("accumulates parent origins into absolute rects", () => {
@@ -50,5 +54,29 @@ describe("runLayout (real ELK, order smoke)", () => {
     const lane = out.abs.get("s_order_fulfillment")!;
     expect(lane.x).toBeGreaterThanOrEqual(par.x);
     expect(lane.y).toBeGreaterThanOrEqual(par.y);
+  }, 20000);
+});
+
+describe("runLayout leaves the router room", () => {
+  const cases: [string, unknown][] = [
+    ["order", order],
+    ["editor", editor],
+    ["media-player", mediaPlayer],
+    ["ticket", ticket],
+  ];
+  it.each(cases)("%s: sibling states that share a row are more than two router pads apart", async (_name, g) => {
+    const vm = buildViewModel(g as Graph);
+    const out = await runLayout(vm);
+    const leaves = vm.nodes.filter((n) => !n.cls.isContainer);
+    for (const a of leaves) {
+      for (const b of leaves) {
+        if (a === b || a.node.parent !== b.node.parent) continue;
+        const ra = out.abs.get(a.node.id)!;
+        const rb = out.abs.get(b.node.id)!;
+        const sameRow = ra.y < rb.y + rb.h && rb.y < ra.y + ra.h;
+        if (!sameRow || rb.x < ra.x) continue;
+        expect(rb.x - (ra.x + ra.w), `${a.node.id} → ${b.node.id}`).toBeGreaterThan(2 * ROUTER_PAD);
+      }
+    }
   }, 20000);
 });

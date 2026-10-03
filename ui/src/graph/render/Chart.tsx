@@ -22,7 +22,7 @@ import type { Rect } from "../model/handles";
 import { runLayout, absFromRel } from "../layout/elkEngine";
 import { initRouter, AvoidRouter } from "../routing/router";
 import { resolveCollisions, type Box } from "./collision";
-import { buildNodes, buildEdges, buildRouterEdges } from "./build";
+import { buildNodes, buildEdges, buildObstacles, buildRouterEdges } from "./build";
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
 import type { FNode, FEdge } from "./types";
@@ -35,11 +35,13 @@ export interface ChartProps {
 }
 type Props = ChartProps;
 
-const posKey = (m: string) => `fate-pos-${m}`;
+// Saved drag positions only fit the layout they were dragged in: node heights
+// differ between overview and detail, and v2 marks the layered layout.
+const posKey = (m: string, compact: boolean) => `fate-pos-v2-${m}-${compact ? "overview" : "detail"}`;
 
-function loadOverrides(machine: string): Record<string, { x: number; y: number }> {
+function loadOverrides(machine: string, compact: boolean): Record<string, { x: number; y: number }> {
   try {
-    return JSON.parse(localStorage.getItem(posKey(machine)) || "{}");
+    return JSON.parse(localStorage.getItem(posKey(machine, compact)) || "{}");
   } catch {
     return {};
   }
@@ -102,7 +104,7 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       const layout = await runLayout(vm, compact);
       if (cancelled) return;
 
-      const overrides = loadOverrides(machine);
+      const overrides = loadOverrides(machine, compact);
       for (const [id, o] of Object.entries(overrides)) {
         const p = layout.rel.get(id);
         if (p) layout.rel.set(id, { ...p, x: o.x, y: o.y });
@@ -112,15 +114,10 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       const es = buildEdges(vm, activeRef.current, compact);
       const abs = absOf(ns);
 
-      // Only leaf nodes (not containers) are libavoid obstacles — containers are
-      // visual groupings and registering them blocks cross-container routes.
-      const containerIds = new Set(vm.nodes.filter((n) => n.cls.isContainer).map((n) => n.node.id));
-      const leafAbs = new Map([...abs.entries()].filter(([id]) => !containerIds.has(id)));
-
       routerRef.current?.destroy();
       const router = new AvoidRouter();
       routerRef.current = router;
-      router.setScene(leafAbs, abs, buildRouterEdges(vm, abs, compact));
+      router.setScene(buildObstacles(vm, abs), abs, buildRouterEdges(vm, abs, compact));
       const routes = router.route();
 
       const routed = es.map((e) =>
@@ -154,7 +151,8 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       rafRef.current = null;
       const r = routerRef.current;
       if (!r) return;
-      r.sync(absOf(nodesRef.current));
+      const abs = absOf(nodesRef.current);
+      r.sync(buildObstacles(vm, abs), abs);
       const routes = r.route();
       setEdges((es) => es.map((e) => (routes.has(e.id) ? ({ ...e, data: { ...e.data!, points: routes.get(e.id) } } as FEdge) : e)));
     });
@@ -219,7 +217,7 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
           const ov: Record<string, { x: number; y: number }> = {};
           for (const n of ns) ov[n.id] = { x: n.position.x, y: n.position.y };
           try {
-            localStorage.setItem(posKey(machine), JSON.stringify(ov));
+            localStorage.setItem(posKey(machine, compact), JSON.stringify(ov));
           } catch {
             /* quota */
           }
@@ -231,7 +229,7 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
 
   const retidy = () => {
     try {
-      localStorage.removeItem(posKey(machine));
+      localStorage.removeItem(posKey(machine, compact));
     } catch {
       /* ignore */
     }

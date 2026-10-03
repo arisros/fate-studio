@@ -2,7 +2,7 @@ import type { ViewModel } from "../model/viewModel";
 import type { RelPos } from "../layout/elkEngine";
 import type { ActiveSet } from "../active";
 import type { Rect } from "../model/handles";
-import { NODE_W, leafHeight } from "../model/sizing";
+import { HEADER_H, NODE_W, leafHeight } from "../model/sizing";
 import { TARGET_HANDLE_ID, sourceHandleId, sourceDy } from "../model/handles";
 import type { RouterEdge } from "../routing/router";
 import type { FNode, FEdge } from "./types";
@@ -79,6 +79,22 @@ export function buildRouterEdges(vm: ViewModel, abs: Map<string, Rect>, compact:
       target: e.edge.target,
       srcDy: sourceDy(e.sourceRowIndex, sr.h, compact),
     });
+  }
+  return out;
+}
+
+/** Shapes the router keeps edges out of: every leaf, plus the header band of a
+ *  compound that has one, so an edge never runs through a container's title.
+ *  Whole containers are not obstacles, edges must be able to enter them. */
+export function buildObstacles(vm: ViewModel, abs: Map<string, Rect>): Map<string, Rect> {
+  const out = new Map<string, Rect>();
+  for (const n of vm.nodes) {
+    const r = abs.get(n.node.id);
+    if (!r) continue;
+    if (!n.cls.isContainer) out.set(n.node.id, r);
+    else if (n.cls.rfType === "compound" && !n.cls.isLane && n.cls.hasOwnTransitions) {
+      out.set(`${n.node.id}#header`, { x: r.x, y: r.y, w: r.w, h: HEADER_H });
+    }
   }
   return out;
 }
