@@ -1,8 +1,9 @@
-<p align="center">
-  <img src="docs/logo.svg" width="96" height="96" alt="fate-studio">
-</p>
-
-<h1 align="center">fate-studio</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-lockup-dark.svg">
+    <img alt="fate-studio" src="docs/logo-lockup-light.svg" width="345">
+  </picture>
+</h1>
 
 <p align="center">A chart viewer and live simulator for fate statecharts.</p>
 
