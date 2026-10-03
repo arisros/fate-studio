@@ -7,13 +7,13 @@
   --muted: #9a92b8;
   --line: #2e2747;
   --accent: #c2ef4e;
-  --accent-fg: #14130a;
+  --accent-fg: #150f23;
   --active: #c2ef4e;
-  --active-bg: rgba(194, 239, 78, 0.14);
-  --edge: #5b5378;
+  --active-bg: rgba(194, 239, 78, 0.1);
+  --edge: #6a5fc1;
   --edge-active: #c2ef4e;
   --danger: #ff6b6b;
-  --radius: 10px;
+  --radius: 12px;
   --mono: "Monaco", "SFMono-Regular", "Menlo", monospace;
   --ui: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -25,12 +25,9 @@
   --fg: #1d1730;
   --muted: #6b6488;
   --line: #e2def0;
-  --accent: #7a3cff;
-  --accent-fg: #ffffff;
-  --active: #7a3cff;
-  --active-bg: rgba(122, 60, 255, 0.1);
-  --edge: #b6afce;
-  --edge-active: #7a3cff;
+  --accent: #5f8700;
+  --active-bg: rgba(95, 135, 0, 0.1);
+  --edge-active: #5f8700;
 }
 
 * { box-sizing: border-box; }
@@ -46,9 +43,11 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: 
   height: 48px; padding: 0 0 0 16px; background: var(--bg-2);
   border-bottom: 1px solid var(--line); flex: 0 0 auto; overflow: hidden;
 }
-.brand { font-weight: 600; font-size: 15px; padding-right: 4px; flex: 0 0 auto; }
-.brand .logo { color: var(--accent); margin-right: 4px; }
-.brand-sub { color: var(--muted); font-weight: 400; }
+.brand { display: flex; align-items: center; gap: 9px; padding-right: 2px; flex: 0 0 auto; }
+.brand-mark { width: 26px; height: 26px; }
+.brand-tile { fill: #150f23; stroke: var(--line); stroke-width: 1.5; }
+.brand-word { height: 21px; width: auto; fill: none; stroke: var(--fg); stroke-width: 5; stroke-linejoin: round; }
+.brand-sub { stroke: var(--muted); }
 .tab-divider { width: 1px; height: 24px; background: var(--line); margin: 0 12px; flex: 0 0 auto; }
 
 /* machine tabs */
@@ -67,8 +66,8 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: 
 .icon-btn:hover { background: rgba(255,255,255,0.06); }
 
 /* buttons */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
-.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1.5px solid var(--line); background: var(--panel); color: var(--fg); }
+.btn.primary { background: var(--active); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 .btn.ghost:hover { background: var(--panel-2); }
 button { font-family: var(--ui); }
 
@@ -92,19 +91,20 @@ button { font-family: var(--ui); }
 .inspector { width: 340px; flex: 0 0 340px; border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 16px; }
 .inspector section { margin-bottom: 20px; }
 .state-path { display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--mono); font-size: 12px; }
-.state-path .region { background: var(--panel-2); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); }
+.state-path .region { background: var(--active-bg); color: var(--accent); padding: 3px 9px; border-radius: 8px; border: 1.5px solid var(--accent); }
 .ev-btns { display: flex; flex-wrap: wrap; gap: 6px; }
-.ev-btn { background: var(--panel-2); border: 1px solid var(--line); color: var(--fg); border-radius: 7px; padding: 5px 10px; font-size: 12px; font-family: var(--mono); cursor: pointer; }
-.ev-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ev-btn { background: var(--active); border: 1.5px solid var(--accent); color: var(--accent-fg); border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 600; font-family: var(--mono); cursor: pointer; }
+.ev-btn:hover { filter: brightness(1.08); }
 .ctx-filter { width: 100%; background: var(--bg-2); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; color: var(--fg); font-size: 12px; margin-bottom: 6px; }
 .ctx-body { background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-family: var(--mono); font-size: 12px; max-height: 220px; overflow: auto; white-space: pre-wrap; margin: 0; }
 .timeline { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; }
 .timeline li { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 12px; font-family: var(--mono); border-bottom: 1px solid var(--line); }
+.timeline li:first-child { color: var(--accent); }
 .tstep { color: var(--muted); width: 24px; }
 .effects { display: flex; flex-direction: column; gap: 8px; }
-.effect { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 12px; }
+.effect { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; font-size: 12px; }
 .effect input { flex: 1; min-width: 120px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; color: var(--fg); padding: 4px 6px; font-family: var(--mono); font-size: 11px; }
-.effect button { border: 1px solid var(--line); background: var(--accent); color: var(--accent-fg); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-weight: 600; }
+.effect button { border: 1.5px solid var(--accent); background: var(--active); color: var(--accent-fg); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-weight: 600; }
 .effect button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 
 /* badge */
@@ -115,10 +115,16 @@ button { font-family: var(--ui); }
 .badge.wait { color: var(--muted); }
 
 /* nodes */
-.node { width: 100%; height: 100%; background: var(--panel); border: 1.5px solid var(--line); border-radius: var(--radius); overflow: hidden; font-size: 12px; transition: border-color .15s, box-shadow .15s; display: flex; flex-direction: column; }
+.node { width: 100%; height: 100%; background: var(--panel); border: 2.4px solid var(--edge); border-radius: var(--radius); overflow: hidden; font-size: 12px; transition: border-color .15s, box-shadow .15s, background .15s; display: flex; flex-direction: column; }
 .node.compound { background: var(--panel-2); }
-.node.active { border-color: var(--active); box-shadow: 0 0 0 2px var(--active-bg); }
-.node.active.leaf { background: var(--active-bg); }
+.node.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--active-bg); }
+/* the lime fill needs dark ink, so the tokens its children read are swapped in place */
+.node.active.leaf:not(.final) {
+  --fg: var(--accent-fg); --muted: rgba(21, 15, 35, 0.72); --line: rgba(21, 15, 35, 0.22);
+  --panel-2: transparent; --bg-2: rgba(21, 15, 35, 0.08); --active-bg: rgba(21, 15, 35, 0.1);
+  background: var(--active); color: var(--fg);
+}
+.node.active.leaf:not(.final) > * { --accent: var(--accent-fg); }
 
 /* Parallel: swimlane outer container (dashed accent border, transparent bg) */
 .node.parallel { background: transparent; border: 2px dashed var(--accent); border-radius: 14px; box-shadow: none; overflow: visible; }
@@ -126,19 +132,23 @@ button { font-family: var(--ui); }
 .swimlane-icon { font-size: 12px; line-height: 1; }
 
 /* Lane: compound direct child of a parallel — one horizontal swimlane region */
-.node.compound.lane { background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; box-shadow: none; overflow: visible; }
+.node.compound.lane { background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.10); border-radius: var(--radius); box-shadow: none; overflow: visible; }
 :root[data-theme="light"] .node.compound.lane { background: rgba(0,0,0,0.025); border-color: rgba(0,0,0,0.08); }
 .region-label { position: absolute; top: 5px; left: 10px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; pointer-events: none; white-space: nowrap; }
 
 /* Ghost compound: structural grouping with no own transitions */
 .node.compound.ghost { background: transparent; border: 1px dashed var(--line); box-shadow: none; overflow: visible; }
 .ghost-label { position: absolute; top: 5px; left: 10px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none; white-space: nowrap; }
-.nhead { display: flex; align-items: center; gap: 6px; padding: 8px 10px; height: 40px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 13px; }
+/* header + top border MUST equal HEADER_H in model/sizing.ts so rows meet their handles */
+.nhead { display: flex; align-items: center; gap: 7px; padding: 0 10px; flex: 0 0 37.6px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 13px; }
 .compound > .nhead, .parallel > .nhead { border-bottom: none; }
+.node.state.compact > .nhead { flex: 1 1 auto; border-bottom: none; }
+.play-mark { width: 9px; height: 11px; flex: 0 0 auto; fill: currentColor; }
 .nlabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dot-initial { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+.dot-initial { position: relative; display: inline-block; width: 9px; height: 9px; margin-right: 10px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+.dot-initial::after { content: ""; position: absolute; left: 100%; top: 50%; width: 8px; height: 2.4px; margin-top: -1.2px; background: inherit; border-radius: 0 2px 2px 0; }
 .dot-initial--click { cursor: pointer; transition: transform .15s, box-shadow .15s; }
-.dot-initial--click:hover { transform: scale(1.45); box-shadow: 0 0 6px var(--accent); }
+.dot-initial--click:hover { transform: scale(1.3); }
 .ntype { font-size: 9px; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: auto; }
 .nact { font-size: 10px; color: var(--muted); font-family: var(--mono); }
 .nrows { display: flex; flex-direction: column; flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
@@ -157,31 +167,30 @@ button { font-family: var(--ui); }
 .erow.sendable { cursor: pointer; }
 .erow.sendable:hover { background: var(--active-bg); }
 .erow.sendable:hover .erow-top .ev { color: var(--accent); }
-.node.final { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 5px; background: transparent; border: none; }
-.final-bullet { position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
-.final-outer { position: absolute; inset: 0; border-radius: 50%; border: 2.5px solid var(--danger); box-shadow: 0 0 10px rgba(255,107,107,0.45), 0 0 22px rgba(255,107,107,0.18); }
-.final-inner { width: 14px; height: 14px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 7px rgba(255,107,107,0.7); }
-.node.final.active .final-outer { border-color: var(--active); box-shadow: 0 0 14px var(--active), 0 0 28px rgba(194,239,78,0.25); }
-.node.final.active .final-inner { background: var(--active); box-shadow: 0 0 9px var(--active); }
-.final-label { font-size: 10px; font-weight: 600; color: var(--danger); letter-spacing: .02em; }
-.node.final.active .final-label { color: var(--active); }
-.node.history { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--panel-2); font-weight: 700; font-size: 14px; }
+.node.final { position: relative; background: transparent; border: none; overflow: visible; }
+/* the ring sits on the left edge, where incoming transitions end */
+.final-ring { position: absolute; left: 0; top: 50%; width: 30px; height: 30px; margin-top: -15px; fill: none; stroke: var(--edge); stroke-width: 3; transition: stroke .15s; }
+.final-dot { fill: var(--edge); stroke: none; transition: fill .15s; }
+.final-label { position: absolute; left: 38px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.node.final.active { box-shadow: none; }
+.node.final.active .final-ring { stroke: var(--accent); }
+.node.final.active .final-dot { fill: var(--accent); }
+.node.final.active .final-label { color: var(--accent); }
+.node.history { align-items: center; justify-content: center; border-radius: 50%; background: var(--panel-2); font-weight: 700; font-size: 14px; }
 .node.history .hist { color: var(--accent); font-size: 15px; font-weight: 800; }
 
 /* ERD-style cards: soft depth on leaf/semantic nodes; tinted header on state cards */
 .node.state, .node.compound:not(.lane):not(.ghost) { box-shadow: 0 1px 3px rgba(0,0,0,.16); }
 .node.state > .nhead { background: var(--panel-2); }
-/* Handles: visible circle dots at node borders, offset 12px outside the border
-   so they meet the libavoid edge anchor (HANDLE_GAP = 12 in model/handles.ts). */
+/* Handles: invisible anchors 12px outside the node border, where the libavoid
+   route starts and ends (HANDLE_GAP = 12 in model/handles.ts). */
 .react-flow__handle {
   width: 10px !important; height: 10px !important;
   min-width: 10px !important; min-height: 10px !important;
-  border-radius: 50% !important;
-  border: 2px solid var(--edge) !important;
-  background: var(--bg) !important;
+  border: none !important;
+  background: none !important;
   pointer-events: none !important;
-  opacity: 1 !important;
-  z-index: 20 !important;
+  opacity: 0 !important;
 }
 /* Source (right): center = node right border + 12px */
 .react-flow__handle-right { transform: translateX(calc(50% + 12px)) translateY(-50%) !important; }
@@ -197,7 +206,9 @@ button { font-family: var(--ui); }
 .react-flow__node.dim { opacity: .20; }
 .react-flow__edge.dim { opacity: .12; }
 .react-flow__node.hl .node { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 3px 14px rgba(0,0,0,.28); }
-.react-flow__edge.hl .rf-edge { stroke: var(--edge-active); stroke-width: 2.5; }
+.react-flow__node.hl .node.final { box-shadow: none; }
+.react-flow__edge.hl .rf-edge { stroke: var(--edge-active); }
+.react-flow__edge.hl .rf-arrow { fill: var(--edge-active); stroke: var(--edge-active); }
 .react-flow__edge.hl .edge-label { color: var(--accent); border-color: var(--accent); }
 
 /* canvas background */
@@ -205,11 +216,11 @@ button { font-family: var(--ui); }
 
 /* canvas toolbar: show-mode segmented control + re-tidy */
 .chart-toolbar { display: flex; align-items: center; gap: 8px; }
-.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.seg { display: inline-flex; background: var(--panel); border: 1.5px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .seg-btn { border: none; background: none; color: var(--muted); padding: 5px 11px; font-size: 12px; cursor: pointer; }
 .seg-btn:hover { color: var(--fg); }
-.seg-btn.on { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
-.retidy-btn { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.seg-btn.on { background: var(--active); color: var(--accent-fg); font-weight: 600; }
+.retidy-btn { background: var(--panel); color: var(--fg); border: 1.5px solid var(--line); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .retidy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* global-event badges on nodes */
@@ -224,10 +235,12 @@ button { font-family: var(--ui); }
 .gl-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); cursor: pointer; }
 
 /* edges */
-.rf-edge { stroke: var(--edge); stroke-width: 2; }
-.rf-edge.active { stroke: var(--edge-active); stroke-width: 2.75; }
-.react-flow__edge.animated .react-flow__edge-path { stroke-dasharray: 6; animation: dashflow .6s linear infinite; }
-@keyframes dashflow { to { stroke-dashoffset: -12; } }
+.rf-edge { stroke: var(--edge); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.rf-edge.active { stroke: var(--edge-active); stroke-width: 2.8; }
+.rf-arrow { fill: var(--edge); stroke: var(--edge); stroke-width: 1.6; stroke-linejoin: round; }
+.rf-arrow.active { fill: var(--edge-active); stroke: var(--edge-active); }
+.react-flow__edge.animated .react-flow__edge-path { stroke-dasharray: 7 7; animation: dashflow .7s linear infinite; }
+@keyframes dashflow { to { stroke-dashoffset: -14; } }
 .edge-label { background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-family: var(--mono); font-size: 10px; color: var(--muted); pointer-events: none; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .edge-label.active { color: var(--accent); border-color: var(--accent); }
 .react-flow__edge-path { stroke: var(--edge); }
