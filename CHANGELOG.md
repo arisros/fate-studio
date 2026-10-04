@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/arisros/fate-studio/compare/v0.5.0...v0.6.0) (2026-10-04)
+
+
+### Added
+
+* restyle the studio as Fate Blueprint ([#14](https://github.com/arisros/fate-studio/issues/14)) ([6d98f75](https://github.com/arisros/fate-studio/commit/6d98f75123a6055f4b7bd5af6c4a7ef7e17918f4))
+
+
+### Fixed
+
+* lay out with layered ELK so edges have room to route ([#13](https://github.com/arisros/fate-studio/issues/13)) ([2fe7d1f](https://github.com/arisros/fate-studio/commit/2fe7d1f957d2e1266182048ccb4156dda1af3b31))
+
 ## [0.5.0](https://github.com/arisros/fate-studio/compare/v0.4.0...v0.5.0) (2026-10-03)
 
 
