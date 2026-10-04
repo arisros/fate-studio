@@ -20,28 +20,20 @@ function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: u
   const entries = Object.entries(props);
   if (!entries.length) return <ContextPanel context={data} />;
   return (
-    <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px", fontSize: 12 }}>
+    <dl className="vm-fields">
       {entries.map(([key, propSchema]) => {
         const val = obj[key];
         const type = schemaType(propSchema) ?? "unknown";
         return (
           <Fragment key={key}>
-            <dt style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>{key}</dt>
-            <dd style={{ margin: 0, fontFamily: "var(--mono)" }}>
+            <dt>{key}</dt>
+            <dd>
               {type === "boolean" ? (
-                <span
-                  style={{
-                    padding: "1px 6px",
-                    borderRadius: 3,
-                    fontSize: 11,
-                    background: val ? "var(--ok-bg, #1a3)" : "var(--danger-bg, #a33)",
-                    color: "#fff",
-                  }}
-                >
+                <span className={`bool-chip ${val ? "yes" : "no"}`}>
                   {val ? "true" : "false"}
                 </span>
               ) : type === "number" || type === "integer" ? (
-                <span style={{ color: "var(--number, #7cf)" }}>{val !== undefined ? String(val) : "—"}</span>
+                <span className="vm-num">{val !== undefined ? String(val) : "—"}</span>
               ) : (
                 <span>{val !== undefined ? String(val) : "—"}</span>
               )}
@@ -111,45 +103,32 @@ function GateEdgePanel({
   const lockIcon = anyClosed ? "🔒" : allOpen ? "🔓" : "❓";
 
   return (
-    <div style={{ marginBottom: 6, border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
+    <div className="gate">
       <div
-        style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", cursor: "pointer", background: "var(--surface2, rgba(255,255,255,.04))" }}
+        className="gate-head"
         onClick={() => setOpen((v) => !v)}
       >
         <span style={{ fontSize: 13 }}>{lockIcon}</span>
-        <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--mono)", fontWeight: 600 }}>{event}</span>
-        <span style={{ fontSize: 10, color: "var(--muted)" }}>{open ? "▾" : "▸"}</span>
+        <span className="gate-ev">{event}</span>
+        <span className="gate-caret">{open ? "▾" : "▸"}</span>
       </div>
       {open && (
-        <div style={{ padding: "6px 8px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+        <div className="gate-body">
+          <table className="gate-table">
             <tbody>
               {evals.map((r, i) => (
                 <tr key={i}>
-                  <td style={{ width: 10, paddingRight: 6 }}>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background:
-                          r.status === "open"
-                            ? "var(--ok, #4c4)"
-                            : r.status === "closed"
-                            ? "var(--danger, #c44)"
-                            : "var(--muted, #888)",
-                      }}
-                    />
+                  <td>
+                    <span className={`vsim-field-dot dot-${r.status === "open" ? "open" : r.status === "closed" ? "closed" : "unknown"}`} />
                   </td>
-                  <td style={{ color: "var(--muted)", paddingRight: 4 }}>
+                  <td className="dim">
                     {r.field.label ?? r.field.path}
                   </td>
-                  <td style={{ color: "var(--muted)", paddingRight: 4 }}>{r.field.op}</td>
-                  <td style={{ fontFamily: "var(--mono)", paddingRight: 4 }}>
+                  <td className="dim">{r.field.op}</td>
+                  <td className="val">
                     {r.field.value !== undefined ? String(r.field.value) : "—"}
                   </td>
-                  <td style={{ fontFamily: "var(--mono)", color: r.status === "open" ? "var(--ok, #4c4)" : r.status === "closed" ? "var(--danger, #c44)" : "var(--muted)" }}>
+                  <td className={`val ${r.status === "open" ? "open" : r.status === "closed" ? "closed" : "dim"}`}>
                     {r.actual !== undefined ? String(r.actual) : "—"}
                   </td>
                 </tr>
@@ -159,8 +138,7 @@ function GateEdgePanel({
           {meta.sample != null && (
             <div style={{ marginTop: 4 }}>
               <button
-                className="btn ghost"
-                style={{ fontSize: 10, padding: "1px 6px" }}
+                className="btn ghost small"
                 onClick={() => setSampleOpen((v) => !v)}
               >
                 {sampleOpen ? "▾" : "▸"} sample
