@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildElkSpec, containerLayout } from "./elkSpec";
 import { buildViewModel } from "../model/viewModel";
 import { NODE_W, leafHeight } from "../model/sizing";
-import type { ElkNode } from "elkjs/lib/elk.bundled.js";
+import type { ElkNode } from "elkjs/lib/elk-api";
 import type { Graph } from "../../types";
 import order from "../__fixtures__/order.graph.json";
 
@@ -35,12 +35,28 @@ describe("buildElkSpec (order)", () => {
     expect(leaf.height).toBe(leafHeight(3)); // AUTHORIZE, CANCEL, DECLINE
   });
 
-  it("excludes self-loops and globals from ELK edges", () => {
-    const ids = new Set((spec.edges ?? []).map((e) => e.id));
-    // STATUS_UPDATE is a self-loop → not an ELK edge.
-    expect([...ids].some((id) => id.includes("STATUS_UPDATE"))).toBe(false);
-    // CANCEL is a real cross-node edge → present.
-    expect([...ids].some((id) => id.includes("CANCEL"))).toBe(true);
+  it("declares each edge in the container that holds both ends, and skips self-loops", () => {
+    const ids = (id: string) => (find(spec, id)!.edges ?? []).map((e) => e.id);
+    expect(spec.edges).toEqual([]);
+    expect(ids("s_order_payment").some((id) => id.includes("CANCEL"))).toBe(true);
+    expect(ids("s_order_payment").some((id) => id.includes("STATUS_UPDATE"))).toBe(false);
+    expect(ids("s_order_fulfillment").some((id) => id.includes("PICKED"))).toBe(true);
+  });
+
+  it("feeds children in flow order from the initial state, finals last", () => {
+    const lane = find(spec, "s_order_payment")!;
+    expect(lane.children?.map((c) => c.id)).toEqual([
+      "s_order_payment_pending",
+      "s_order_payment_authorized",
+      "s_order_payment_declined",
+      "s_order_payment_voided",
+      "s_order_payment_captured",
+    ]);
+  });
+
+  it("gives a leaf one port per transition row plus one for incoming edges", () => {
+    const leaf = find(spec, "s_order_payment_pending")!;
+    expect(leaf.ports?.map((p) => p.layoutOptions?.["elk.port.side"])).toEqual(["WEST", "EAST", "EAST", "EAST"]);
   });
 
   it("parallel containers omit the header inset", () => {
