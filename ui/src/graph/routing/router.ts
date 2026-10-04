@@ -64,6 +64,7 @@ export class AvoidRouter {
   private _bySource = new Map<string, RouterEdge[]>();
   private _byTarget = new Map<string, RouterEdge[]>();
   private _last = new Map<string, Rect>();
+  private _lastObstacles = new Map<string, Rect>();
   private _vis = new Map<string, VisAnchors>();
 
   constructor() {
@@ -81,7 +82,7 @@ export class AvoidRouter {
 
   /**
    * Full (re)initialization after a layout.
-   * obstacles — leaf nodes only (shapes libavoid routes around, NOT containers).
+   * obstacles — leaf nodes and compound header bands (shapes libavoid routes around, NOT whole containers).
    * anchors   — full abs map for connector endpoint positions (includes containers as sources).
    */
   setScene(obstacles: Map<string, Rect>, anchors: Map<string, Rect>, edges: RouterEdge[]): void {
@@ -122,19 +123,23 @@ export class AvoidRouter {
       }
     }
     this._last = new Map(anchors);
+    this._lastObstacles = new Map(obstacles);
   }
 
   /**
    * Incremental update during drag.
-   * Shape moves only if the node is a registered obstacle (leaf).
-   * Connector endpoints update for any node that moved (compound sources aren't obstacles).
+   * Obstacle shapes move when their rect changed; connector endpoints update for
+   * any node that moved (compound sources aren't obstacles).
    */
-  sync(abs: Map<string, Rect>): void {
-    for (const [id, r] of abs) {
-      if (sameRect(this._last.get(id), r)) continue;
-      // move shape obstacle if registered
+  sync(obstacles: Map<string, Rect>, abs: Map<string, Rect>): void {
+    for (const [id, r] of obstacles) {
+      if (sameRect(this._lastObstacles.get(id), r)) continue;
       const shape = this._shapes.get(id);
       if (shape) this._r.moveShape_poly(shape, this.box(r), true);
+    }
+    this._lastObstacles = new Map(obstacles);
+    for (const [id, r] of abs) {
+      if (sameRect(this._last.get(id), r)) continue;
       // update connector endpoints and visual stubs for any connected edges
       for (const e of this._bySource.get(id) ?? []) {
         this._conns.get(e.id)?.setSourceEndpoint(this.srcEnd(r, e.srcDy));
@@ -176,6 +181,7 @@ export class AvoidRouter {
     this._conns.clear();
     this._shapes.clear();
     this._last.clear();
+    this._lastObstacles.clear();
     this._vis.clear();
   }
 
