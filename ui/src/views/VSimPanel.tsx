@@ -83,10 +83,10 @@ export function VSimPanel({
         )}
 
         <div className="vsim-actions">
-          <button className="btn ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={onUndo}>
+          <button className="btn ghost" onClick={onUndo}>
             ↩ undo
           </button>
-          <button className="btn ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={onReset}>
+          <button className="btn ghost" onClick={onReset}>
             ↺ reset
           </button>
         </div>
@@ -180,7 +180,7 @@ function DecisionPanel({
       )}
       <button
         className="btn ghost"
-        style={{ fontSize: 11, marginTop: 6, width: "100%" }}
+        style={{ marginTop: 6, width: "100%" }}
         onClick={onCancel}
       >
         cancel
