@@ -12,13 +12,13 @@ function Brand() {
     <>
       <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
         <rect className="brand-tile" x="2" y="2" width="60" height="60" rx="13" />
-        <path d="M18 42 Q18 36 25 36 H31" fill="none" stroke="#6a5fc1" strokeWidth="4.6" />
-        <circle cx="38.5" cy="36" r="6" fill="none" stroke="#6a5fc1" strokeWidth="3" />
-        <circle cx="38.5" cy="36" r="2.5" fill="#6a5fc1" />
+        <path d="M18 42 Q18 36 25 36 H31" fill="none" stroke="#5b7bb0" strokeWidth="4.6" />
+        <circle cx="38.5" cy="36" r="6" fill="none" stroke="#5b7bb0" strokeWidth="3" />
+        <circle cx="38.5" cy="36" r="2.5" fill="#5b7bb0" />
         <path d="M18 49 V25 Q18 16 27 16 H34" fill="none" stroke="#ffffff" strokeWidth="4.8" />
         <circle cx="18" cy="50" r="5" fill="#ffffff" />
         <rect x="32" y="6.5" width="19" height="19" rx="6" fill="#c2ef4e" />
-        <path d="M38.6 11.2 V20.8 L46.6 16Z" fill="#150f23" />
+        <path d="M38.6 11.2 V20.8 L46.6 16Z" fill="#0f1830" />
       </svg>
       <svg className="brand-word" viewBox="-3 0 262 58" aria-hidden="true">
         <path d="M6 40 V12 Q6 4 14 4 H17 M0 16 H16 M45 28 Q45 16 35.5 16 Q26 16 26 28 Q26 40 35.5 40 Q45 40 45 28 M45 13.5 V40 M60 6 V33 Q60 40 67 40 H71 M54 16 H71 M80 28 H99 Q99 16 89.5 16 Q80 16 80 28 Q80 40 90 40 Q96 40 98.5 34.5" />
