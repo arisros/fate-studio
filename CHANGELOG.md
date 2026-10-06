@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/arisros/fate-studio/compare/v0.6.0...v0.6.1) (2026-10-06)
+
+
+### Fixed
+
+* ship the engine fixes up to fate v0.10.1 ([#19](https://github.com/arisros/fate-studio/issues/19)) ([6252be8](https://github.com/arisros/fate-studio/commit/6252be88d0ce7f016a8c5a90665dab6a96881393))
+
 ## [0.6.0](https://github.com/arisros/fate-studio/compare/v0.5.0...v0.6.0) (2026-10-04)
 
 
