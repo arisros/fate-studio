@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/arisros/fate-studio/compare/v0.6.1...v0.6.2) (2026-10-09)
+
+
+### Fixed
+
+* ship the event naming fix from fate v0.11.0 ([#21](https://github.com/arisros/fate-studio/issues/21)) ([57fc1a0](https://github.com/arisros/fate-studio/commit/57fc1a0015f0db0968b824280bb0cf3ce0989011))
+
 ## [0.6.1](https://github.com/arisros/fate-studio/compare/v0.6.0...v0.6.1) (2026-10-06)
 
 
