@@ -166,6 +166,7 @@ func (s *Server) entryList() []Entry {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/machines", s.handleAPIMachines)
+	mux.HandleFunc("/api/version", s.handleAPIVersion)
 	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/m/", s.handleMachine)
 	mux.HandleFunc("/sim/", s.handleSimRoute)

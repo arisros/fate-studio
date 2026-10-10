@@ -1,4 +1,4 @@
-import type { Graph, MachineInfo, SimFrame } from "./types";
+import type { Graph, MachineInfo, SimFrame, VersionInfo } from "./types";
 
 async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url, { credentials: "same-origin" });
@@ -21,6 +21,7 @@ async function postForm(url: string, body: Record<string, string>): Promise<SimF
 // studio works both at the site root and under a mount prefix.
 export const api = {
   machines: () => getJSON<MachineInfo[]>("api/machines"),
+  version: () => getJSON<VersionInfo>("api/version"),
   graph: (name: string) => getJSON<Graph>(`m/${encodeURIComponent(name)}/graph`),
   describe: (name: string) => getJSON<unknown>(`m/${encodeURIComponent(name)}/describe`),
 

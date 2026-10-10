@@ -94,3 +94,8 @@ export interface MachineInfo {
   summary: string;
   live: boolean; // has a simulator (BuildLive != nil)
 }
+
+export interface VersionInfo {
+  studio: string;
+  engine?: string; // absent when the build carries no module information
+}

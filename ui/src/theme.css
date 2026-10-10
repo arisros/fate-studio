@@ -90,6 +90,9 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: 
 }
 .machine-tab:hover { color: var(--fg); background: rgba(255,255,255,0.04); }
 .machine-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.brand-text { display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.brand-text .brand-word { height: 17px; align-self: flex-start; }
+.versions { font-family: var(--mono); font-size: 9px; line-height: 1; letter-spacing: 0.02em; color: var(--muted); white-space: nowrap; }
 .icon-btn { border: none; background: none; padding: 0 16px; font-size: 15px; height: 100%; border-radius: 0; }
 .icon-btn:hover { background: rgba(255,255,255,0.06); }
 

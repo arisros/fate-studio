@@ -5,7 +5,7 @@ import { SimView } from "./views/SimView";
 import { ToastProvider } from "./toast";
 import { useTheme } from "./theme";
 import { api } from "./api";
-import type { MachineInfo } from "./types";
+import type { MachineInfo, VersionInfo } from "./types";
 
 function Brand() {
   return (
@@ -20,15 +20,32 @@ function Brand() {
         <rect x="32" y="6.5" width="19" height="19" rx="6" fill="#c2ef4e" />
         <path d="M38.6 11.2 V20.8 L46.6 16Z" fill="#0f1830" />
       </svg>
-      <svg className="brand-word" viewBox="-3 0 262 58" aria-hidden="true">
-        <path d="M6 40 V12 Q6 4 14 4 H17 M0 16 H16 M45 28 Q45 16 35.5 16 Q26 16 26 28 Q26 40 35.5 40 Q45 40 45 28 M45 13.5 V40 M60 6 V33 Q60 40 67 40 H71 M54 16 H71 M80 28 H99 Q99 16 89.5 16 Q80 16 80 28 Q80 40 90 40 Q96 40 98.5 34.5" />
-        <path
-          className="brand-sub"
-          transform="translate(114,0)"
-          d="M17 20.5 Q14 16 9 16 Q1 16 1 22 Q1 27 9 28 Q18 29 18 34.5 Q18 40 9 40 Q3 40 0 35 M33 6 V33 Q33 40 40 40 H44 M27 16 H44 M53 13.5 V29 Q53 40 62.5 40 Q72 40 72 29 M72 13.5 V40 M100 28 Q100 16 90.5 16 Q81 16 81 28 Q81 40 90.5 40 Q100 40 100 28 M100 3 V40 M111.5 13.5 V40 M111.5 2.5 V8 M123 28 Q123 16 132.5 16 Q142 16 142 28 Q142 40 132.5 40 Q123 40 123 28Z"
-        />
-      </svg>
+      <span className="brand-text">
+        <svg className="brand-word" viewBox="-3 0 262 58" aria-hidden="true">
+          <path d="M6 40 V12 Q6 4 14 4 H17 M0 16 H16 M45 28 Q45 16 35.5 16 Q26 16 26 28 Q26 40 35.5 40 Q45 40 45 28 M45 13.5 V40 M60 6 V33 Q60 40 67 40 H71 M54 16 H71 M80 28 H99 Q99 16 89.5 16 Q80 16 80 28 Q80 40 90 40 Q96 40 98.5 34.5" />
+          <path
+            className="brand-sub"
+            transform="translate(114,0)"
+            d="M17 20.5 Q14 16 9 16 Q1 16 1 22 Q1 27 9 28 Q18 29 18 34.5 Q18 40 9 40 Q3 40 0 35 M33 6 V33 Q33 40 40 40 H44 M27 16 H44 M53 13.5 V29 Q53 40 62.5 40 Q72 40 72 29 M72 13.5 V40 M100 28 Q100 16 90.5 16 Q81 16 81 28 Q81 40 90.5 40 Q100 40 100 28 M100 3 V40 M111.5 13.5 V40 M111.5 2.5 V8 M123 28 Q123 16 132.5 16 Q142 16 142 28 Q142 40 132.5 40 Q123 40 123 28Z"
+          />
+        </svg>
+        <Versions />
+      </span>
     </>
+  );
+}
+
+function Versions() {
+  const [v, setV] = useState<VersionInfo | null>(null);
+  useEffect(() => {
+    api.version().then(setV).catch(() => setV(null));
+  }, []);
+  if (!v) return null;
+  return (
+    <span className="versions" title="running versions">
+      studio {v.studio}
+      {v.engine ? ` · fate ${v.engine}` : ""}
+    </span>
   );
 }
 
