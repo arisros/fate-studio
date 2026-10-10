@@ -258,6 +258,9 @@ button { font-family: var(--ui); }
 .erow-top { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; }
 .erow-top .ev { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .erow .grd { color: var(--accent); white-space: nowrap; flex-shrink: 0; }
+.erow .grd.otherwise { color: var(--muted); font-style: italic; }
+.erow.shadowed .ev { color: var(--muted); text-decoration: line-through; }
+.erow .dead-ind { color: var(--danger); flex-shrink: 0; }
 .erow .intl { margin-left: auto; color: var(--muted); opacity: 0.8; }
 .erow-acts { font-size: 10px; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
 .erow.self .erow-top .ev { color: var(--muted); }

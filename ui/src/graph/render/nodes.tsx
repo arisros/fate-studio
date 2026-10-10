@@ -93,7 +93,7 @@ function Rows({ data }: { data: RFNodeData }) {
         return (
           <div
             key={e.id}
-            className={`erow${can ? " sendable" : ""}${r.selfLoop ? " self" : ""}${acts.length ? " has-acts" : ""}`}
+            className={`erow${can ? " sendable" : ""}${r.selfLoop ? " self" : ""}${acts.length ? " has-acts" : ""}${e.shadowed ? " shadowed" : ""}`}
             data-tip-edge={e.id}
             onClick={(ev) => {
               ev.stopPropagation();
@@ -103,6 +103,8 @@ function Rows({ data }: { data: RFNodeData }) {
             <div className="erow-top">
               <span className="ev">{e.event}</span>
               {e.guard && <span className="grd">[{e.guard}]</span>}
+              {e.fallback && <span className="grd otherwise">otherwise</span>}
+              {e.shadowed && <Icon name="warning" size={10} className="dead-ind" />}
               {e.internal && <Icon name="loop" size={10} className="intl" />}
               {r.condMeta && <Icon name="lock" size={10} className="gate-ind" />}
             </div>

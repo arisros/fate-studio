@@ -1,4 +1,4 @@
-# github.com/arisros/fate v0.12.0
+# github.com/arisros/fate v0.13.0
 ## explicit; go 1.24
 github.com/arisros/fate/action
 github.com/arisros/fate/describe

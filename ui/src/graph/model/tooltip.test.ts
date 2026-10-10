@@ -54,6 +54,31 @@ describe("tipFor", () => {
     });
   });
 
+  it("explains a fallback branch and warns about one that never fires", () => {
+    const routed = buildViewModel({
+      id: "m",
+      initial: "a",
+      nodes: [
+        { id: "a", label: "a", path: "a", type: "atomic", parent: "", initial: true },
+        { id: "b", label: "b", path: "b", type: "atomic", parent: "", initial: false },
+      ],
+      edges: [
+        { id: "r1", source: "a", event: "ROUTE", target: "b", guard: "fast" },
+        { id: "r2", source: "a", event: "ROUTE", target: "b", fallback: true },
+        { id: "r3", source: "a", event: "ROUTE", target: "a", shadowed: true },
+      ],
+    });
+    expect(tipFor(routed, "edge", "r2")?.rows).toContainEqual({
+      label: "guard",
+      value: "otherwise: taken when the guards before it refuse",
+    });
+    expect(tipFor(routed, "edge", "r3")?.rows).toContainEqual({
+      label: "warning",
+      value: "never fires: an earlier ROUTE transition has no guard",
+    });
+    expect(tipFor(routed, "edge", "r1")?.rows.map((r) => r.label)).not.toContain("warning");
+  });
+
   it("tells self and internal transitions apart", () => {
     expect(tipFor(vm, "edge", "e2")?.rows[0].value).toBe("self");
     expect(tipFor(vm, "edge", "e3")?.rows[0].value).toBe("internal");

@@ -118,7 +118,8 @@
             "internal": true,
             "actions": [
               "recordApproval"
-            ]
+            ],
+            "fallback": true
           }
         ],
         "REOPEN": [
@@ -204,7 +205,8 @@
             }
           },
           {
-            "target": "general"
+            "target": "general",
+            "fallback": true
           }
         ]
       }
