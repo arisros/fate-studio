@@ -90,11 +90,14 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: 
 }
 .machine-tab:hover { color: var(--fg); background: rgba(255,255,255,0.04); }
 .machine-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-.brand-text { display: flex; flex-direction: column; justify-content: center; gap: 3px; }
-.brand-text .brand-word { height: 17px; align-self: flex-start; }
-.versions { font-family: var(--mono); font-size: 9px; line-height: 1; letter-spacing: 0.02em; color: var(--muted); white-space: nowrap; }
-.icon-btn { border: none; background: none; padding: 0 16px; font-size: 15px; height: 100%; border-radius: 0; }
-.icon-btn:hover { background: rgba(255,255,255,0.06); }
+.brand-text { display: flex; flex-direction: column; justify-content: center; }
+.brand-text .brand-word { height: 18px; align-self: flex-start; }
+.brand-text .version { margin-top: -2px; padding-left: 1px; }
+.version { font-family: var(--mono); font-size: 9px; line-height: 1; letter-spacing: 0.02em; color: var(--muted); white-space: nowrap; }
+.engine-version { flex: 0 0 auto; padding: 0 12px 0 16px; font-size: 11px; }
+@media (max-width: 720px) { .engine-version { display: none; } }
+.btn.icon-btn { border: none; background: none; padding: 0 16px; font-size: 15px; height: 100%; border-radius: 0; }
+.btn.icon-btn:hover { background: rgba(255,255,255,0.06); }
 
 /* buttons */
 .btn { display: inline-flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; border: var(--stroke-ui) solid var(--line); background: var(--panel); color: var(--fg); box-sizing: border-box; height: var(--h-control); font-weight: 500; line-height: 1; justify-content: center; }

@@ -29,22 +29,35 @@ function Brand() {
             d="M17 20.5 Q14 16 9 16 Q1 16 1 22 Q1 27 9 28 Q18 29 18 34.5 Q18 40 9 40 Q3 40 0 35 M33 6 V33 Q33 40 40 40 H44 M27 16 H44 M53 13.5 V29 Q53 40 62.5 40 Q72 40 72 29 M72 13.5 V40 M100 28 Q100 16 90.5 16 Q81 16 81 28 Q81 40 90.5 40 Q100 40 100 28 M100 3 V40 M111.5 13.5 V40 M111.5 2.5 V8 M123 28 Q123 16 132.5 16 Q142 16 142 28 Q142 40 132.5 40 Q123 40 123 28Z"
           />
         </svg>
-        <Versions />
+        <StudioVersion />
       </span>
     </>
   );
 }
 
-function Versions() {
+let versionRequest: Promise<VersionInfo> | null = null;
+
+function useVersion(): VersionInfo | null {
   const [v, setV] = useState<VersionInfo | null>(null);
   useEffect(() => {
-    api.version().then(setV).catch(() => setV(null));
+    versionRequest ??= api.version();
+    versionRequest.then(setV).catch(() => setV(null));
   }, []);
+  return v;
+}
+
+function StudioVersion() {
+  const v = useVersion();
   if (!v) return null;
+  return <span className="version">v{v.studio}</span>;
+}
+
+function EngineVersion() {
+  const v = useVersion();
+  if (!v?.engine) return null;
   return (
-    <span className="versions" title="running versions">
-      studio {v.studio}
-      {v.engine ? ` · fate ${v.engine}` : ""}
+    <span className="version engine-version" title="fate engine version">
+      fate {v.engine}
     </span>
   );
 }
@@ -81,6 +94,7 @@ function AppShell({ machines }: { machines: MachineInfo[] }) {
           ))}
         </nav>
         <div className="spacer" />
+        <EngineVersion />
         <button className="btn ghost icon-btn" onClick={toggleTheme} title={mode === "dark" ? "Light mode" : "Dark mode"}>
           {mode === "dark" ? "☀" : "☾"}
         </button>
