@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/arisros/fate-studio/compare/v0.7.0...v0.8.0) (2026-10-10)
+
+
+### Added
+
+* show the running studio and engine versions ([#27](https://github.com/arisros/fate-studio/issues/27)) ([fbff672](https://github.com/arisros/fate-studio/commit/fbff672b4eff1701d1095b7408510c9f97ef8a42))
+* **ui:** label fallback branches and warn about transitions that never fire ([#29](https://github.com/arisros/fate-studio/issues/29)) ([c7ad577](https://github.com/arisros/fate-studio/commit/c7ad577241eb901073f865fee666d3b4d4972d43))
+* **ui:** rebuild the inspector as a readout with icons, form controls and a step log ([#28](https://github.com/arisros/fate-studio/issues/28)) ([92c3b00](https://github.com/arisros/fate-studio/commit/92c3b005f66b0d7fa0e869ea2d76d19b865dc4d1))
+
+
+### Fixed
+
+* offer events and highlights for every parallel region ([#25](https://github.com/arisros/fate-studio/issues/25)) ([17cd940](https://github.com/arisros/fate-studio/commit/17cd940bd2cd7ab07cdd3e80e7ff7d334023c391))
+
 ## [0.7.0](https://github.com/arisros/fate-studio/compare/v0.6.2...v0.7.0) (2026-10-10)
 
 
