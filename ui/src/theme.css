@@ -352,3 +352,32 @@ button { font-family: var(--ui); }
 .gate-table .open { color: var(--ok); }
 .gate-table .closed { color: var(--danger); }
 .btn.small { height: var(--h-chip); padding: 0 var(--space-2); font-size: 11px; }
+
+/* chart wrapper + the one tooltip (DESIGN pill-neutral-dark: flat, hairline, 4px) */
+.chart-wrap { position: relative; width: 100%; height: 100%; }
+/* State names grow as the chart zooms out (--label-scale, set by Chart.tsx). */
+.nlabel { font-size: calc(13px * var(--label-scale, 1)); }
+.final-label { font-size: calc(12px * var(--label-scale, 1)); }
+.swimlane-label { font-size: calc(12px * var(--label-scale, 1)); }
+.region-label { font-size: calc(11px * var(--label-scale, 1)); }
+.ghost-label { font-size: calc(10px * var(--label-scale, 1)); }
+.chart-tip { position: absolute; z-index: 20; pointer-events: none; max-width: 320px; background: var(--bg-2); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: var(--space-1) var(--space-2); font-size: 12px; line-height: 1.5; }
+.chart-tip-name { font-family: var(--mono); font-weight: 600; overflow-wrap: anywhere; }
+.chart-tip dl { margin: 0; }
+.chart-tip-row { display: flex; gap: var(--space-2); }
+.chart-tip dt { flex: 0 0 52px; color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.25px; line-height: 1.8; }
+.chart-tip dd { margin: 0; font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+
+/* inspector empty state */
+.empty-note { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3); border: 1px dashed var(--line); border-radius: var(--radius-md); font-size: 13px; line-height: 1.5; }
+.empty-note span { color: var(--muted); font-size: 12px; }
+
+/* first-visit guide: a click-catching layer, a ring on the anchor, one card.
+   No lime here: the active state already carries it. */
+.guide { position: fixed; inset: 0; z-index: 950; cursor: pointer; }
+.guide-ring { position: fixed; border: 2px solid var(--accent); border-radius: var(--radius-lg); box-shadow: 0 0 0 9999px color-mix(in srgb, var(--bg) 55%, transparent); pointer-events: none; }
+.guide-card { position: fixed; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--space-4); }
+.guide-count { font-size: 10px; font-weight: 600; letter-spacing: 0.25px; line-height: 1.8; text-transform: uppercase; color: var(--muted); }
+.guide-title { font-size: 16px; font-weight: 600; line-height: 1.5; }
+.guide-body { margin: var(--space-1) 0 var(--space-3); font-size: 14px; line-height: 1.5; color: var(--muted); }
+.guide-hint { font-size: 10px; font-weight: 600; letter-spacing: 0.25px; text-transform: uppercase; color: var(--accent); }

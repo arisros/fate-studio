@@ -9,6 +9,8 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useOnViewportChange,
+  useReactFlow,
   type Node,
   type NodeChange,
   type NodePositionChange,
@@ -26,6 +28,13 @@ import { buildNodes, buildEdges, buildObstacles, buildRouterEdges } from "./buil
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
 import type { FNode, FEdge } from "./types";
+import { boundsOf, fitViewport, labelScale } from "../model/fit";
+import { tipFor, type Tip, type TipKind } from "../model/tooltip";
+import { Tooltip, type TipAnchor } from "./Tooltip";
+
+const TIP_DELAY_MS = 350;
+const FINAL_LABEL_GAP = 12;
+const FINAL_LABEL_CH = 14; // one character of a final state's name at the largest label scale
 
 export interface ChartProps {
   machine: string;
@@ -57,6 +66,17 @@ function absOf(ns: FNode[]): Map<string, Rect> {
   );
 }
 
+/** The state a fresh actor starts in: the initial chain followed down to a leaf. */
+function initialLeaf(ns: FNode[]): FNode | undefined {
+  let at = ns.find((n) => n.data.vm.node.initial && !n.parentId);
+  for (;;) {
+    const children = ns.filter((n) => n.parentId === at?.id);
+    const next = children.find((n) => n.data.vm.node.initial) ?? (at?.type === "parallel" ? children[0] : undefined);
+    if (!next) return at;
+    at = next;
+  }
+}
+
 function ChartInner({ machine, graph, activePath, colorMode }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FNode>([]);
   const [edges, setEdges] = useEdgesState<FEdge>([]);
@@ -65,6 +85,12 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
   const [showGlobals, setShowGlobals] = useState(false);
   const [compact, setCompact] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
+  const [laidOut, setLaidOut] = useState(0);
+  const [tip, setTip] = useState<{ tip: Tip; anchor: TipAnchor } | null>(null);
+  const rf = useReactFlow();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const tipKey = useRef("");
+  const tipTimer = useRef<number | undefined>(undefined);
 
   const vm = useMemo(() => buildViewModel(graph), [graph]);
   const active = useMemo(() => activeFromPath(activePath), [activePath]);
@@ -127,6 +153,7 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
       setNodes(ns);
       setEdges(routed.map((e) => (e.data?.global ? { ...e, hidden: !showGlobals } : e)));
       setGlobals(vm.globals);
+      setLaidOut((n) => n + 1);
     })();
     return () => {
       cancelled = true;
@@ -137,11 +164,44 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
   useEffect(
     () => () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      window.clearTimeout(tipTimer.current);
       routerRef.current?.destroy();
       routerRef.current = null;
     },
     [],
   );
+
+  // Fit after every layout. The rects come from the layout itself, so this
+  // does not wait for React Flow to measure the nodes.
+  useEffect(() => {
+    if (!laidOut) return;
+    let raf = 0;
+    let tries = 0;
+    const fit = () => {
+      const el = wrapRef.current;
+      const ns = nodesRef.current;
+      if (!el || !ns.length || !rf.viewportInitialized) {
+        if (tries++ < 60) raf = requestAnimationFrame(fit);
+        return;
+      }
+      const abs = absOf(ns);
+      // A final state's name is drawn to the right of its ring, outside its rect.
+      for (const n of ns) {
+        const r = abs.get(n.id);
+        if (r && n.type === "final") abs.set(n.id, { ...r, w: r.w + FINAL_LABEL_GAP + n.data.vm.node.label.length * FINAL_LABEL_CH });
+      }
+      const bounds = boundsOf(abs.values());
+      if (!bounds) return;
+      const act = activeRef.current;
+      const anchorNode = ns.find((n) => act.leaves.has(n.data.vm.node.path)) ?? initialLeaf(ns) ?? ns[0];
+      const view = fitViewport(bounds, abs.get(anchorNode.id) ?? bounds, el.clientWidth, el.clientHeight);
+      el.style.setProperty("--label-scale", String(labelScale(view.zoom)));
+      void rf.setViewport(view);
+    };
+    raf = requestAnimationFrame(fit);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [laidOut]);
 
   // Re-route on drag — rAF-coalesced so libavoid runs at most once per frame.
   useEffect(() => {
@@ -184,8 +244,48 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, hover]);
 
+  // Written straight to the wrapper: a zoom gesture must not re-render the chart.
+  useOnViewportChange({
+    onChange: (v) => wrapRef.current?.style.setProperty("--label-scale", String(labelScale(v.zoom))),
+  });
+
   const onNodeMouseEnter = useCallback((_e: unknown, node: Node) => setHover(node.id), []);
   const onNodeMouseLeave = useCallback(() => setHover(null), []);
+
+  const hideTip = useCallback(() => {
+    window.clearTimeout(tipTimer.current);
+    tipKey.current = "";
+    setTip(null);
+  }, []);
+
+  // One delegated handler covers nodes, transition rows and edges: a row is the
+  // edge it draws, so it gets the edge's tooltip.
+  const onTipOver = (ev: React.MouseEvent) => {
+    const wrap = wrapRef.current;
+    if (!wrap || ev.buttons) return hideTip();
+    const target = ev.target as Element;
+    const row = target.closest<HTMLElement>("[data-tip-edge]");
+    const edgeEl = row ? null : target.closest<SVGGElement>(".react-flow__edge");
+    const nodeEl = row || edgeEl ? null : target.closest<HTMLElement>(".react-flow__node");
+    const kind: TipKind = nodeEl ? "node" : "edge";
+    const id = row?.dataset.tipEdge ?? edgeEl?.getAttribute("data-id") ?? nodeEl?.getAttribute("data-id");
+    if (!id) return hideTip();
+    const key = `${kind}:${id}`;
+    if (key === tipKey.current) return;
+    hideTip();
+    const found = tipFor(vm, kind, id);
+    if (!found) return;
+    tipKey.current = key;
+
+    const box = wrap.getBoundingClientRect();
+    // A row's tooltip hangs off its node, so it does not cover the rows below.
+    const el = row?.closest<HTMLElement>(".react-flow__node") ?? nodeEl;
+    const r = el?.getBoundingClientRect();
+    const anchor: TipAnchor = r
+      ? { x: r.left - box.left, y: r.top - box.top, w: r.width, h: r.height }
+      : { x: ev.clientX - box.left, y: ev.clientY - box.top, w: 0, h: 0 };
+    tipTimer.current = window.setTimeout(() => setTip({ tip: found, anchor }), TIP_DELAY_MS);
+  };
 
   const handleChanges = (changes: NodeChange<FNode>[]) => {
     // Collision: push a dragged node out of any sibling it overlaps.
@@ -243,70 +343,79 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
   };
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={handleChanges}
-      onNodeMouseEnter={onNodeMouseEnter}
-      onNodeMouseLeave={onNodeMouseLeave}
-      colorMode={colorMode}
-      fitView
-      fitViewOptions={{ padding: 0.18, includeHiddenNodes: false }}
-      minZoom={0.15}
-      maxZoom={3}
-      edgesReconnectable={false}
-      nodesConnectable={false}
-      proOptions={{ hideAttribution: true }}
+    <div
+      className="chart-wrap"
+      ref={wrapRef}
+      onMouseOver={onTipOver}
+      onMouseLeave={hideTip}
+      onMouseDown={hideTip}
+      onWheel={hideTip}
     >
-      <Panel position="top-left">
-        <div className="chart-toolbar">
-          <div className="seg" role="group" aria-label="show mode">
-            <button className={`seg-btn${compact ? " on" : ""}`} onClick={() => setCompact(true)} title="state names only — clean overview">
-              overview
-            </button>
-            <button className={`seg-btn${compact ? "" : " on"}`} onClick={() => setCompact(false)} title="show transition rows and actions">
-              detail
-            </button>
-          </div>
-          <button className="retidy-btn" onClick={retidy} title="re-run auto-layout">
-            ↺ re-tidy
-          </button>
-        </div>
-      </Panel>
-      {globals.length > 0 && (
-        <Panel position="top-right">
-          <div className="globals-legend">
-            <div className="gl-title">
-              global events <span className="gl-count">{globals.length}</span>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={handleChanges}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
+        colorMode={colorMode}
+        fitViewOptions={{ padding: 0.18, includeHiddenNodes: false }}
+        minZoom={0.15}
+        maxZoom={3}
+        edgesReconnectable={false}
+        nodesConnectable={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Panel position="top-left">
+          <div className="chart-toolbar">
+            <div className="seg" role="group" aria-label="show mode">
+              <button className={`seg-btn${compact ? " on" : ""}`} onClick={() => setCompact(true)} title="state names only — clean overview">
+                overview
+              </button>
+              <button className={`seg-btn${compact ? "" : " on"}`} onClick={() => setCompact(false)} title="show transition rows and actions">
+                detail
+              </button>
             </div>
-            <div className="gl-chips">
-              {globals.map((ev) => (
-                <span key={ev} className="badge-ev">
-                  ⊗ {ev}
-                </span>
-              ))}
-            </div>
-            <label className="gl-toggle">
-              <input type="checkbox" checked={showGlobals} onChange={toggleGlobals} />
-              draw as edges
-            </label>
+            <button className="retidy-btn" onClick={retidy} title="re-run auto-layout">
+              ↺ re-tidy
+            </button>
           </div>
         </Panel>
-      )}
-      <Background variant={BackgroundVariant.Dots} gap={28} size={1.2} className="mesh-bg" />
-      <Controls showInteractive={false} />
-      <MiniMap
-        pannable
-        zoomable
-        nodeColor={(n: Node) => {
-          if (n.type === "parallel") return "color-mix(in srgb, var(--accent) 30%, transparent)";
-          return "color-mix(in srgb, var(--edge) 45%, transparent)";
-        }}
-        maskColor="color-mix(in srgb, var(--bg) 70%, transparent)"
-      />
-    </ReactFlow>
+        {globals.length > 0 && (
+          <Panel position="top-right">
+            <div className="globals-legend">
+              <div className="gl-title">
+                global events <span className="gl-count">{globals.length}</span>
+              </div>
+              <div className="gl-chips">
+                {globals.map((ev) => (
+                  <span key={ev} className="badge-ev">
+                    ⊗ {ev}
+                  </span>
+                ))}
+              </div>
+              <label className="gl-toggle">
+                <input type="checkbox" checked={showGlobals} onChange={toggleGlobals} />
+                draw as edges
+              </label>
+            </div>
+          </Panel>
+        )}
+        <Background variant={BackgroundVariant.Dots} gap={28} size={1.2} className="mesh-bg" />
+        <Controls showInteractive={false} />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(n: Node) => {
+            if (n.type === "parallel") return "color-mix(in srgb, var(--accent) 30%, transparent)";
+            return "color-mix(in srgb, var(--edge) 45%, transparent)";
+          }}
+          maskColor="color-mix(in srgb, var(--bg) 70%, transparent)"
+        />
+      </ReactFlow>
+      {tip && <Tooltip tip={tip.tip} anchor={tip.anchor} />}
+    </div>
   );
 }
 
