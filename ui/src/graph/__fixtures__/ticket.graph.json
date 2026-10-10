@@ -197,7 +197,8 @@
       "actions": [
         "recordApproval"
       ],
-      "internal": true
+      "internal": true,
+      "fallback": true
     },
     {
       "id": "s_review__REOPEN__4",
@@ -265,7 +266,8 @@
       "id": "s_triaged__ROUTE__4",
       "source": "s_triaged",
       "event": "ROUTE",
-      "target": "s_general"
+      "target": "s_general",
+      "fallback": true
     }
   ]
 }
