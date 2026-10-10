@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/arisros/fate/render"
@@ -61,4 +62,30 @@ func TestDispatchRejectsUndeclaredEvents(t *testing.T) {
 			t.Errorf("%s accepted an undeclared event", d.Name)
 		}
 	}
+}
+
+func TestOrderOffersEventsFromEveryRegion(t *testing.T) {
+	for _, d := range demos.All() {
+		if d.Name != "order" {
+			continue
+		}
+		live := d.Entry().BuildLive()
+		if err := live.Start(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		got := live.AvailableEvents()
+		for _, want := range []string{"PICKED", "AUTHORIZE", "OPEN_TICKET"} {
+			if !slices.Contains(got, want) {
+				t.Errorf("events %v miss %s", got, want)
+			}
+		}
+		if err := live.SendEvent(t.Context(), "AUTHORIZE"); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := live.Snapshot().Path, "order.fulfillment.picking | order.payment.authorized | order.support.idle"; got != want {
+			t.Errorf("path %q, want %q", got, want)
+		}
+		return
+	}
+	t.Fatal("no order demo")
 }
