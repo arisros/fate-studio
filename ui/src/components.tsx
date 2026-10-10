@@ -54,8 +54,19 @@ export function ContextPanel({ context }: { context: unknown }) {
   );
 }
 
-export function Timeline({ events }: { events: string[] }) {
-  if (!events.length) return <p className="muted">no events yet</p>;
+export function Timeline({ events, canSend }: { events: string[]; canSend: boolean }) {
+  if (!events.length) {
+    return (
+      <div className="empty-note">
+        <strong>No events yet</strong>
+        <span>
+          {canSend
+            ? "Send one from Events, or click a highlighted row on the chart."
+            : "This machine accepts no events from here."}
+        </span>
+      </div>
+    );
+  }
   return (
     <ol className="timeline">
       {events
