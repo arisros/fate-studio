@@ -12,6 +12,8 @@ import { useToast } from "../toast";
 import { ActivePath, ContextPanel, EffectsPanel, StatusBadge, Timeline } from "../components";
 import { evaluateGates, type FieldEval } from "../graph/sim/gateEval";
 import type { ActiveSet } from "../graph/active";
+import { useGuide } from "../guide";
+import { Guide } from "../GuideOverlay";
 
 // Renders UIState fields using the JSON Schema when available; falls back to raw JSON.
 function SchemaView({ schema, data }: { schema: Record<string, unknown>; data: unknown }) {
@@ -221,6 +223,9 @@ export function SimView() {
     [snap?.events, graph, active],
   );
   const timeline = useTimeline(name, snap);
+  // A machine that offers no events is read-only here, and the guide has
+  // nothing to point at.
+  const guide = useGuide(conn === "open" && !!graph && sendable.size > 0);
 
   // Mutations broadcast their resulting frame before replying, so state and
   // timeline arrive over SSE; nothing to mirror locally.
@@ -291,7 +296,7 @@ export function SimView() {
         <span className="mtitle">{name}</span>
         <StatusBadge status={snap?.status ?? "connecting"} conn={conn} />
         <div className="spacer" />
-        <button className="btn ghost" onClick={onUndo}>undo</button>
+        <button className="btn ghost" data-guide="undo" onClick={onUndo}>undo</button>
         <button className="btn ghost" onClick={onReset}>reset</button>
         <button className="btn ghost" onClick={onImport}>import</button>
         <a className="btn ghost" href={api.exportURL(name)}>export</a>
@@ -310,7 +315,7 @@ export function SimView() {
             <h2>Active state</h2>
             <ActivePath path={snap?.path ?? ""} />
           </section>
-          <section>
+          <section data-guide="events">
             <h2>Events</h2>
             <div className="ev-btns">
               {[...sendable].sort().map((ev) => (
@@ -341,10 +346,11 @@ export function SimView() {
           <GateSection graph={graph} snap={snap} active={active} />
           <section>
             <h2>Timeline</h2>
-            <Timeline events={timeline} />
+            <Timeline events={timeline} canSend={sendable.size > 0} />
           </section>
         </aside>
       </div>
+      {guide.step != null && <Guide step={guide.step} onNext={guide.next} />}
     </div>
   );
 }

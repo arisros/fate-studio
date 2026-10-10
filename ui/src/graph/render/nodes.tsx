@@ -8,13 +8,12 @@ import {
 } from "../model/handles";
 import type { FNode, RFNodeData } from "./types";
 
-/** Clickable initial-state dot. Clicking fits the view to the node's bounding box. */
+/** Initial-state dot. Clicking it centers the view on the node. */
 function InitialDot({ id }: { id: string }) {
   const rf = useReactFlow();
   return (
     <span
       className="dot-initial dot-initial--click"
-      title="initial state — click to center"
       onClick={(e) => {
         e.stopPropagation();
         rf.fitView({ nodes: [{ id }], padding: 0.18, duration: 350 });
@@ -71,7 +70,7 @@ function Header({ data }: { data: RFNodeData }) {
       <span className="nlabel">{n.label}</span>
       {n.type !== "atomic" && n.type !== "compound" && <span className={`ntype t-${n.type}`}>{n.type}</span>}
       {!data.compact && !!n.entry?.length && (
-        <span className="nact" title="entry">
+        <span className="nact">
           ⏎{n.entry.join(",")}
         </span>
       )}
@@ -93,17 +92,17 @@ function Rows({ data }: { data: RFNodeData }) {
           <div
             key={e.id}
             className={`erow${can ? " sendable" : ""}${r.selfLoop ? " self" : ""}${acts.length ? " has-acts" : ""}`}
+            data-tip-edge={e.id}
             onClick={(ev) => {
               ev.stopPropagation();
               if (can) onSend(e.event);
             }}
-            title={can ? `send ${e.event}` : undefined}
           >
             <div className="erow-top">
               <span className="ev">{e.event}</span>
               {e.guard && <span className="grd">[{e.guard}]</span>}
               {e.internal && <span className="intl">⟳</span>}
-              {r.condMeta && <span className="gate-ind" title="has gate conditions">🔒</span>}
+              {r.condMeta && <span className="gate-ind">🔒</span>}
             </div>
             {acts.length > 0 && (
               <div className="erow-acts">/{acts.join(", ")}</div>
@@ -120,7 +119,7 @@ function Badges({ data }: { data: RFNodeData }) {
   return (
     <div className="nbadges">
       {data.vm.badges.map((ev) => (
-        <span key={ev} className="badge-ev" title={`global transition: ${ev}`}>
+        <span key={ev} className="badge-ev">
           ⊗ {ev}
         </span>
       ))}
@@ -204,7 +203,7 @@ export function ParallelNode({ data }: P) {
 
 export function FinalNode({ data }: P) {
   return (
-    <div className={cls(data, "node final")} title={data.vm.node.label}>
+    <div className={cls(data, "node final")}>
       <TargetHandle />
       <svg className="final-ring" viewBox="0 0 30 30" aria-hidden="true">
         <circle cx="15" cy="15" r="12" />
@@ -217,7 +216,7 @@ export function FinalNode({ data }: P) {
 
 export function HistoryNode({ data }: P) {
   return (
-    <div className={cls(data, "node history")} title={`history (${data.vm.node.history ?? "shallow"})`}>
+    <div className={cls(data, "node history")}>
       <TargetHandle />
       <span className="hist">{data.vm.node.history === "deep" ? "H*" : "H"}</span>
       <SourceHandles data={data} />
