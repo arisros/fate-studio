@@ -3,7 +3,7 @@ import type { ViewModel } from "./viewModel";
 // What the chart tooltip says about a node or an edge. Pure — no React, no DOM.
 
 export interface TipRow {
-  label: "type" | "actions" | "guard" | "target";
+  label: "type" | "actions" | "guard" | "target" | "warning";
   value: string;
 }
 
@@ -45,6 +45,10 @@ function edgeTip(vm: ViewModel, id: string): Tip | null {
   const actions = named(e.edge.actions);
   if (actions.length) rows.push({ label: "actions", value: actions.join(", ") });
   if (e.edge.guard) rows.push({ label: "guard", value: e.edge.guard });
+  if (e.edge.fallback) rows.push({ label: "guard", value: "otherwise: taken when the guards before it refuse" });
+  if (e.edge.shadowed) {
+    rows.push({ label: "warning", value: `never fires: an earlier ${e.edge.event} transition has no guard` });
+  }
   const target = vm.graph.nodes.find((n) => n.id === e.edge.target);
   if (target) rows.push({ label: "target", value: target.path });
   return { name: e.edge.event, rows };

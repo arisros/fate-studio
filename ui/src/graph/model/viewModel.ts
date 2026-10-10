@@ -39,6 +39,7 @@ export interface ViewModel {
 export function edgeLabel(e: GraphEdge): string {
   let s = e.event;
   if (e.guard) s += ` [${e.guard}]`;
+  if (e.fallback) s += " [otherwise]";
   const acts = (e.actions ?? []).filter((a) => a.trim() !== "");
   if (acts.length) s += ` /${acts.join(",")}`;
   if (e.internal) s += " ⟳";

@@ -16,6 +16,11 @@ describe("edgeLabel", () => {
     };
     expect(edgeLabel(e)).toBe("STATUS_UPDATE ⟳");
   });
+  it("labels a fallback branch", () => {
+    const e: GraphEdge = { id: "x", source: "a", target: "b", event: "ROUTE", fallback: true };
+    expect(edgeLabel(e)).toBe("ROUTE [otherwise]");
+  });
+
   it("renders guard and real actions", () => {
     const e: GraphEdge = { id: "x", source: "a", target: "b", event: "GO", guard: "ok", actions: ["log"] };
     expect(edgeLabel(e)).toBe("GO [ok] /log");

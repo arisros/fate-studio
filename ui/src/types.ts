@@ -48,6 +48,8 @@ export interface GraphEdge {
   guard?: string;
   actions?: string[];
   internal?: boolean;
+  fallback?: boolean; // the unguarded branch taken when the guarded ones before it refuse
+  shadowed?: boolean; // can never fire: an unguarded branch is listed before it
   cond_meta?: CondMeta; // what the guard checks, when the machine declares it
 }
 
