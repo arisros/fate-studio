@@ -20,7 +20,8 @@
       "package-name": "fate-studio",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "ui/package.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "ui/package.json", "jsonpath": "$.version" },
+        "version.go"
       ]
     }
   }
