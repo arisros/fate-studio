@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../icons";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Graph } from "../types";
@@ -72,13 +73,14 @@ export function MachineView() {
       <div className="subbar">
         <span className="mtitle">{name}</span>
         {live && (
-          <Link to={`/sim/${encodeURIComponent(name)}`} className="btn primary">▶ simulate</Link>
+          <Link to={`/sim/${encodeURIComponent(name)}`} className="btn primary"><Icon name="play" />Simulate</Link>
         )}
         <a href={`m/${encodeURIComponent(name)}/describe`} className="btn ghost" target="_blank" rel="noreferrer">
           JSON descriptor
         </a>
         <button className="btn ghost" onClick={toggleVsim} disabled={!graph}>
-          {vsim ? "✕ close sim" : "▷ virtual sim"}
+          <Icon name={vsim ? "close" : "play"} />
+          {vsim ? "Close sim" : "Virtual sim"}
         </button>
       </div>
       <div className="canvas">

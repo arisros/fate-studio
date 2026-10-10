@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Icon, gateIcon } from "../icons";
+import { TextArea } from "../forms";
 import type { PendingDecision } from "../graph/sim/virtualSim";
 import { evaluateGates } from "../graph/sim/gateEval";
 
@@ -48,10 +50,10 @@ export function VSimPanel({
     <div className="vsim-panel">
       <div className="vsim-header">
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
-          <span className="vsim-title">Virtual Sim</span>
+          <span className="vsim-title">Virtual sim</span>
           <span className="vsim-subtitle">guards not run; gates checked against the context</span>
         </div>
-        <button className="vsim-close" onClick={onClose} title="Close">✕</button>
+        <button className="vsim-close" onClick={onClose} title="Close"><Icon name="close" /></button>
       </div>
 
       <div className="vsim-body">
@@ -77,34 +79,36 @@ export function VSimPanel({
                   {ev}
                 </button>
               ))}
-              {!events.length && <span className="muted">none from here</span>}
+              {!events.length && <span className="muted">None from here</span>}
             </div>
           </div>
         )}
 
         <div className="vsim-actions">
           <button className="btn ghost" onClick={onUndo}>
-            ↩ undo
+            <Icon name="undo" />Undo
           </button>
           <button className="btn ghost" onClick={onReset}>
-            ↺ reset
+            <Icon name="reset" />Reset
           </button>
         </div>
 
         <div className="vsim-mock">
           <button className="vsim-mock-toggle" onClick={() => setMockOpen((v) => !v)}>
-            {mockOpen ? "▾" : "▸"} Mock context
+            <Icon name={mockOpen ? "chevron-down" : "chevron-right"} size={12} /> Mock context
           </button>
           {mockOpen && (
             <>
-              <textarea
+              <TextArea
+                code
                 rows={4}
+                invalid={!!parseErr}
                 value={mockRaw}
                 onChange={(e) => setMockRaw(e.target.value)}
                 placeholder='{"score": 65, "status": "approved"}'
               />
               {parseErr
-                ? <span className="vsim-warn">⚠ {parseErr}</span>
+                ? <span className="vsim-warn"><Icon name="warning" size={12} /> {parseErr}</span>
                 : <pre className="vsim-mock-preview">{JSON.stringify(parsed, null, 2)}</pre>
               }
             </>
@@ -131,9 +135,9 @@ function DecisionPanel({
   return (
     <div className="vsim-decision">
       <div className="vsim-decision-header">
-        <span className="vsim-decision-icon">🔀</span>
+        <Icon name="branch" className="vsim-decision-icon" />
         <span className="vsim-decision-title">
-          <strong>{decision.event}</strong> — pick a branch
+          <strong>{decision.event}</strong>: pick a branch
         </span>
       </div>
       <div className="vsim-decision-hint">
@@ -144,9 +148,7 @@ function DecisionPanel({
           const evals = choice.condMeta ? evaluateGates(choice.condMeta, evalCtx) : [];
           const allOpen = evals.length > 0 && evals.every((r) => r.status === "open");
           const anyClosed = evals.some((r) => r.status === "closed");
-          const gateIcon = evals.length === 0
-            ? null
-            : anyClosed ? "🔒" : allOpen ? "🔓" : "❓";
+          const gate = evals.length === 0 ? null : gateIcon(anyClosed, allOpen);
 
           return (
             <button
@@ -155,10 +157,12 @@ function DecisionPanel({
               onClick={() => onDecide(choice.targetId)}
             >
               <span className="vsim-choice-label">
-                {choice.isSelfLoop ? "↺" : "→"} {choice.label}
+                <Icon name={choice.isSelfLoop ? "loop" : "arrow-right"} size={12} /> {choice.label}
               </span>
-              {gateIcon && (
-                <span className="vsim-choice-gate" title="gate status">{gateIcon}</span>
+              {gate && (
+                <span className="vsim-choice-gate" title="gate status">
+                  <Icon name={gate} size={12} />
+                </span>
               )}
               {evals.length > 0 && (
                 <span className="vsim-choice-fields">
@@ -196,14 +200,14 @@ function SampleHints({ choices }: { choices: PendingDecision["choices"] }) {
   return (
     <div style={{ marginTop: 4 }}>
       <button className="vsim-mock-toggle" onClick={() => setOpen((v) => !v)}>
-        {open ? "▾" : "▸"} sample contexts
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={12} /> Sample contexts
       </button>
       {open && (
         <div style={{ marginTop: 4 }}>
           {withSample.map((c) => (
             <div key={c.targetId} style={{ marginBottom: 6 }}>
               <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>
-                → {c.label}
+                <Icon name="arrow-right" size={11} /> {c.label}
               </div>
               <pre className="vsim-mock-preview">
                 {JSON.stringify(c.condMeta!.sample, null, 2)}

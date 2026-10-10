@@ -350,3 +350,41 @@ func TestSim_ConcurrentSendsPublishFinalState(t *testing.T) {
 		t.Errorf("timeline should record all %d sends; got %d (%s)", n+1, got, tb)
 	}
 }
+
+func TestSim_FrameCarriesSteps(t *testing.T) {
+	c, base, closeFn := clientFor(t)
+	defer closeFn()
+
+	type frame struct {
+		Path  string `json:"path"`
+		Steps []struct {
+			Kind, Label, From, To string
+		} `json:"steps"`
+	}
+	send := func(path string, form url.Values) frame {
+		t.Helper()
+		_, body := post(t, c, base+path, form)
+		var f frame
+		if err := json.Unmarshal([]byte(body), &f); err != nil {
+			t.Fatalf("decode frame: %v (%s)", err, body)
+		}
+		return f
+	}
+
+	first := send("/sim/traffic-light/send", url.Values{"event": {"NEXT"}})
+	if len(first.Steps) != 1 {
+		t.Fatalf("steps: got %+v, want one", first.Steps)
+	}
+	if got := first.Steps[0]; got.Kind != "event" || got.Label != "NEXT" || got.From == "" || got.To != first.Path || got.From == got.To {
+		t.Errorf("step: got %+v, frame path %q", got, first.Path)
+	}
+
+	second := send("/sim/traffic-light/send", url.Values{"event": {"NEXT"}})
+	if len(second.Steps) != 2 || second.Steps[1].From != first.Path {
+		t.Errorf("second step should start where the first ended: %+v", second.Steps)
+	}
+
+	if undone := send("/sim/traffic-light/undo", nil); len(undone.Steps) != 1 {
+		t.Errorf("undo should drop the last step: %+v", undone.Steps)
+	}
+}

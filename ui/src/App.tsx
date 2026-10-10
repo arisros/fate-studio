@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { Icon } from "./icons";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { MachineView } from "./views/MachineView";
 import { SimView } from "./views/SimView";
+import { DesignView } from "./views/DesignView";
 import { ToastProvider } from "./toast";
 import { useTheme } from "./theme";
 import { api } from "./api";
@@ -56,8 +58,9 @@ function EngineVersion() {
   const v = useVersion();
   if (!v?.engine) return null;
   return (
-    <span className="version engine-version" title="fate engine version">
-      fate {v.engine}
+    <span className="engine-version" title="fate engine version">
+      <span className="engine-name">fate</span>
+      <span className="version">v{v.engine}</span>
     </span>
   );
 }
@@ -96,7 +99,7 @@ function AppShell({ machines }: { machines: MachineInfo[] }) {
         <div className="spacer" />
         <EngineVersion />
         <button className="btn ghost icon-btn" onClick={toggleTheme} title={mode === "dark" ? "Light mode" : "Dark mode"}>
-          {mode === "dark" ? "☀" : "☾"}
+          <Icon name={mode === "dark" ? "sun" : "moon"} size={16} />
         </button>
       </header>
       <Routes>
@@ -112,6 +115,7 @@ function AppShell({ machines }: { machines: MachineInfo[] }) {
         />
         <Route path="/m/:name" element={<MachineView />} />
         <Route path="/sim/:name" element={<SimView />} />
+        <Route path="/design" element={<DesignView />} />
         <Route
           path="*"
           element={

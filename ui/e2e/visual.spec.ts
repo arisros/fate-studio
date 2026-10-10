@@ -268,7 +268,7 @@ for (const host of HOSTS) {
     await page.goto(`${host}/sim/ticket`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".react-flow__node .node.active.leaf");
     await page.waitForTimeout(1200);
-    await expect(page.locator(".inspector")).toContainText("none from here");
+    await expect(page.locator(".inspector")).toContainText("None from here");
     await expect(page.locator(".inspector")).toContainText("This machine accepts no events from here.");
     await expect(page.locator(".guide-card")).toHaveCount(0);
     await page.keyboard.press("?");
