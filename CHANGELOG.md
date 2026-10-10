@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/arisros/fate-studio/compare/v0.6.2...v0.7.0) (2026-10-10)
+
+
+### Added
+
+* fit charts on load, add a first-visit guide and chart tooltips ([#23](https://github.com/arisros/fate-studio/issues/23)) ([d9f3cae](https://github.com/arisros/fate-studio/commit/d9f3cae630213eb9211b76fa69e65df478b77bff))
+
 ## [0.6.2](https://github.com/arisros/fate-studio/compare/v0.6.1...v0.6.2) (2026-10-09)
 
 
