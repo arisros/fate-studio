@@ -32,8 +32,9 @@ type session struct {
 	mu       sync.Mutex
 	live     LiveInstance
 	subs     []chan simFrame
-	history  [][]byte // snapshot bytes captured *before* each applied event
-	events   []string // event names, parallel to history
+	history  [][]byte  // snapshot bytes captured *before* each applied event
+	events   []string  // event names, parallel to history
+	steps    []simStep // what each event did, parallel to history
 	lastSeen time.Time
 }
 
@@ -44,7 +45,17 @@ type session struct {
 // server still held the full history).
 type simFrame struct {
 	LiveSnapshot
-	Timeline []string `json:"timeline"`
+	Timeline []string  `json:"timeline"`
+	Steps    []simStep `json:"steps"`
+}
+
+// simStep is one applied step of a session: what was applied and the active
+// path on either side of it.
+type simStep struct {
+	Kind  string `json:"kind"` // event, timer, resolve or reject
+	Label string `json:"label"`
+	From  string `json:"from"`
+	To    string `json:"to"`
 }
 
 // frameLocked builds the frame for the current state. The mutex must be held,
@@ -53,7 +64,9 @@ type simFrame struct {
 func (s *session) frameLocked() simFrame {
 	tl := make([]string, len(s.events))
 	copy(tl, s.events)
-	return simFrame{LiveSnapshot: s.live.Snapshot(), Timeline: tl}
+	steps := make([]simStep, len(s.steps))
+	copy(steps, s.steps)
+	return simFrame{LiveSnapshot: s.live.Snapshot(), Timeline: tl, Steps: steps}
 }
 
 // frame returns the current frame under lock.
@@ -79,16 +92,22 @@ func (s *session) applyEvent(ctx context.Context, ev string) error {
 		if len(s.history) >= maxHistory {
 			s.history = s.history[1:]
 			s.events = s.events[1:]
+			s.steps = s.steps[1:]
 		}
 		s.history = append(s.history, before)
 		s.events = append(s.events, ev)
+		s.steps = append(s.steps, simStep{Kind: "event", Label: ev, From: s.live.Snapshot().Path})
 	}
 	if err := s.live.SendEvent(ctx, ev); err != nil {
 		if perr == nil { // roll back the history push
 			s.history = s.history[:len(s.history)-1]
 			s.events = s.events[:len(s.events)-1]
+			s.steps = s.steps[:len(s.steps)-1]
 		}
 		return err
+	}
+	if perr == nil {
+		s.steps[len(s.steps)-1].To = s.live.Snapshot().Path
 	}
 	s.broadcastLocked()
 	return nil
@@ -97,7 +116,7 @@ func (s *session) applyEvent(ctx context.Context, ev string) error {
 // applyEffect captures the pre-effect snapshot (for undo/timeline), runs fn,
 // and rolls back the history push if fn fails. Used for timer/invocation
 // effects, which advance the machine like events but aren't user events.
-func (s *session) applyEffect(label string, fn func() error) error {
+func (s *session) applyEffect(label string, step simStep, fn func() error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	before, perr := s.live.Persist()
@@ -105,31 +124,38 @@ func (s *session) applyEffect(label string, fn func() error) error {
 		if len(s.history) >= maxHistory {
 			s.history = s.history[1:]
 			s.events = s.events[1:]
+			s.steps = s.steps[1:]
 		}
+		step.From = s.live.Snapshot().Path
 		s.history = append(s.history, before)
 		s.events = append(s.events, label)
+		s.steps = append(s.steps, step)
 	}
 	if err := fn(); err != nil {
 		if perr == nil {
 			s.history = s.history[:len(s.history)-1]
 			s.events = s.events[:len(s.events)-1]
+			s.steps = s.steps[:len(s.steps)-1]
 		}
 		return err
+	}
+	if perr == nil {
+		s.steps[len(s.steps)-1].To = s.live.Snapshot().Path
 	}
 	s.broadcastLocked()
 	return nil
 }
 
 func (s *session) fireTimer(id string) error {
-	return s.applyEffect("⏲ after", func() error { return s.live.FireTimer(id) })
+	return s.applyEffect("⏲ after", simStep{Kind: "timer", Label: id}, func() error { return s.live.FireTimer(id) })
 }
 
 func (s *session) resolveInvocation(id, output string) error {
-	return s.applyEffect("✓ "+id, func() error { return s.live.ResolveInvocation(id, output) })
+	return s.applyEffect("✓ "+id, simStep{Kind: "resolve", Label: id}, func() error { return s.live.ResolveInvocation(id, output) })
 }
 
 func (s *session) rejectInvocation(id, errMsg string) error {
-	return s.applyEffect("✗ "+id, func() error { return s.live.RejectInvocation(id, errMsg) })
+	return s.applyEffect("✗ "+id, simStep{Kind: "reject", Label: id}, func() error { return s.live.RejectInvocation(id, errMsg) })
 }
 
 // undo pops the last event and restores the prior snapshot. Returns false if
@@ -143,6 +169,7 @@ func (s *session) undo() (bool, error) {
 	snap := s.history[len(s.history)-1]
 	s.history = s.history[:len(s.history)-1]
 	s.events = s.events[:len(s.events)-1]
+	s.steps = s.steps[:len(s.steps)-1]
 	if err := s.live.Restore(snap); err != nil {
 		return true, err
 	}
@@ -162,6 +189,7 @@ func (s *session) reset() error {
 	s.live = live
 	s.history = nil
 	s.events = nil
+	s.steps = nil
 	s.broadcastLocked()
 	return nil
 }
@@ -175,6 +203,7 @@ func (s *session) importSnapshot(b []byte) error {
 	}
 	s.history = nil
 	s.events = nil
+	s.steps = nil
 	s.broadcastLocked()
 	return nil
 }

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "../../icons";
+import { Checkbox } from "../../forms";
 import {
   Background,
   BackgroundVariant,
@@ -370,15 +372,15 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
         <Panel position="top-left">
           <div className="chart-toolbar">
             <div className="seg" role="group" aria-label="show mode">
-              <button className={`seg-btn${compact ? " on" : ""}`} onClick={() => setCompact(true)} title="state names only — clean overview">
-                overview
+              <button className={`seg-btn${compact ? " on" : ""}`} onClick={() => setCompact(true)} title="State names only">
+                Overview
               </button>
-              <button className={`seg-btn${compact ? "" : " on"}`} onClick={() => setCompact(false)} title="show transition rows and actions">
-                detail
+              <button className={`seg-btn${compact ? "" : " on"}`} onClick={() => setCompact(false)} title="Transition rows and actions">
+                Detail
               </button>
             </div>
-            <button className="retidy-btn" onClick={retidy} title="re-run auto-layout">
-              ↺ re-tidy
+            <button className="retidy-btn" onClick={retidy} title="Run the automatic layout again">
+              <Icon name="layout" />Re-tidy
             </button>
           </div>
         </Panel>
@@ -386,19 +388,17 @@ function ChartInner({ machine, graph, activePath, colorMode }: Props) {
           <Panel position="top-right">
             <div className="globals-legend">
               <div className="gl-title">
-                global events <span className="gl-count">{globals.length}</span>
+                Shared events <span className="gl-count">{globals.length}</span>
               </div>
+              <p className="gl-hint">Accepted by many states. Each state shows them as a chip, so their lines do not cover the chart.</p>
               <div className="gl-chips">
                 {globals.map((ev) => (
                   <span key={ev} className="badge-ev">
-                    ⊗ {ev}
+                    <Icon name="global" size={11} /> {ev}
                   </span>
                 ))}
               </div>
-              <label className="gl-toggle">
-                <input type="checkbox" checked={showGlobals} onChange={toggleGlobals} />
-                draw as edges
-              </label>
+              <Checkbox className="gl-toggle" label="Draw their lines" checked={showGlobals} onChange={toggleGlobals} />
             </div>
           </Panel>
         )}

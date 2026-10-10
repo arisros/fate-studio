@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Icon, gateIcon } from "../icons";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
 import type { CondMeta, Graph, GraphNode, LiveSnapshot, SimFrame } from "../types";
@@ -102,7 +103,6 @@ function GateEdgePanel({
 
   const allOpen = evals.length > 0 && evals.every((r) => r.status === "open");
   const anyClosed = evals.some((r) => r.status === "closed");
-  const lockIcon = anyClosed ? "🔒" : allOpen ? "🔓" : "❓";
 
   return (
     <div className="gate">
@@ -110,9 +110,9 @@ function GateEdgePanel({
         className="gate-head"
         onClick={() => setOpen((v) => !v)}
       >
-        <span style={{ fontSize: 13 }}>{lockIcon}</span>
+        <Icon name={gateIcon(anyClosed, allOpen)} className={anyClosed ? "gate-closed" : allOpen ? "gate-open" : undefined} />
         <span className="gate-ev">{event}</span>
-        <span className="gate-caret">{open ? "▾" : "▸"}</span>
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={12} className="gate-caret" />
       </div>
       {open && (
         <div className="gate-body">
@@ -143,7 +143,7 @@ function GateEdgePanel({
                 className="btn ghost small"
                 onClick={() => setSampleOpen((v) => !v)}
               >
-                {sampleOpen ? "▾" : "▸"} sample
+                <Icon name={sampleOpen ? "chevron-down" : "chevron-right"} size={12} /> Sample
               </button>
               {sampleOpen && (
                 <pre className="ctx-body" style={{ marginTop: 4 }}>
@@ -185,6 +185,27 @@ function GateSection({ graph, snap, active }: { graph: Graph | null; snap: LiveS
   );
 }
 
+// eventTargets maps each event sendable from the active states to the state it
+// leads to, for the inspector's event list.
+function eventTargets(graph: Graph, activePaths: Set<string>): Map<string, string> {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const found = new Map<string, Set<string>>();
+  for (const e of graph.edges) {
+    const source = byId.get(e.source);
+    if (!source || !activePaths.has(source.path)) continue;
+    const label = e.internal || e.target === e.source ? "self" : (byId.get(e.target)?.label ?? "");
+    if (!label) continue;
+    if (!found.has(e.event)) found.set(e.event, new Set());
+    found.get(e.event)!.add(label);
+  }
+  const out = new Map<string, string>();
+  for (const [event, labels] of found) {
+    const list = [...labels];
+    out.set(event, list.length > 2 ? `${list.slice(0, 2).join(", ")} +${list.length - 2}` : list.join(", "));
+  }
+  return out;
+}
+
 // useTimeline returns the frame's timeline, or fetches it after each frame
 // when the frame does not carry one.
 function useTimeline(name: string, snap: SimFrame | null): string[] {
@@ -222,6 +243,7 @@ export function SimView() {
     () => new Set(snap?.events ?? (graph ? eventsFromGraph(graph, active.paths) : [])),
     [snap?.events, graph, active],
   );
+  const targets = useMemo(() => (graph ? eventTargets(graph, active.paths) : new Map<string, string>()), [graph, active]);
   const timeline = useTimeline(name, snap);
   // A machine that offers no events is read-only here, and the guide has
   // nothing to point at.
@@ -296,10 +318,10 @@ export function SimView() {
         <span className="mtitle">{name}</span>
         <StatusBadge status={snap?.status ?? "connecting"} conn={conn} />
         <div className="spacer" />
-        <button className="btn ghost" data-guide="undo" onClick={onUndo}>undo</button>
-        <button className="btn ghost" onClick={onReset}>reset</button>
-        <button className="btn ghost" onClick={onImport}>import</button>
-        <a className="btn ghost" href={api.exportURL(name)}>export</a>
+        <button className="btn ghost" data-guide="undo" onClick={onUndo}><Icon name="undo" />Undo</button>
+        <button className="btn ghost" onClick={onReset}><Icon name="reset" />Reset</button>
+        <button className="btn ghost" onClick={onImport}><Icon name="import" />Import</button>
+        <a className="btn ghost" href={api.exportURL(name)}><Icon name="export" />Export</a>
       </div>
 
       <div className="sim-body">
@@ -319,11 +341,20 @@ export function SimView() {
             <h2>Events</h2>
             <div className="ev-btns">
               {[...sendable].sort().map((ev) => (
-                <button key={ev} className="ev-btn" onClick={() => onSend(ev)}>
-                  {ev}
-                </button>
+                <div key={ev} className="ev-row">
+                  <Icon name="play" size={11} className="ev-send" />
+                  <button className="ev-btn" onClick={() => onSend(ev)}>
+                    {ev}
+                  </button>
+                  {targets.get(ev) && (
+                    <span className="ev-target">
+                      <Icon name={targets.get(ev) === "self" ? "loop" : "arrow-right"} size={12} />
+                      {targets.get(ev)}
+                    </span>
+                  )}
+                </div>
               ))}
-              {!sendable.size && <span className="muted">none from here</span>}
+              {!sendable.size && <span className="muted">None from here</span>}
             </div>
           </section>
           {!!(snap?.timers?.length || snap?.invocations?.length) && (
@@ -346,7 +377,7 @@ export function SimView() {
           <GateSection graph={graph} snap={snap} active={active} />
           <section>
             <h2>Timeline</h2>
-            <Timeline events={timeline} canSend={sendable.size > 0} />
+            <Timeline events={timeline} steps={snap?.steps} canSend={sendable.size > 0} />
           </section>
         </aside>
       </div>

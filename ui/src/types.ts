@@ -87,6 +87,15 @@ export interface SimFrame extends LiveSnapshot {
   // Steps applied in this session, oldest first. Omitted by a proxied fate
   // httphandler stream; the UI then reads GET sim/{name}/timeline.
   timeline?: string[];
+  // What each step did. Present only on the studio's own simulator frames.
+  steps?: SimStep[];
+}
+
+export interface SimStep {
+  kind: "event" | "timer" | "resolve" | "reject";
+  label: string;
+  from: string; // active path before the step
+  to: string; // active path after it
 }
 
 export interface MachineInfo {

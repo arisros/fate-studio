@@ -1,4 +1,5 @@
 import { Handle, Position, type NodeProps, useReactFlow } from "@xyflow/react";
+import { Icon } from "../../icons";
 import { useStudio } from "../studioCtx";
 import {
   TARGET_HANDLE_ID,
@@ -71,7 +72,8 @@ function Header({ data }: { data: RFNodeData }) {
       {n.type !== "atomic" && n.type !== "compound" && <span className={`ntype t-${n.type}`}>{n.type}</span>}
       {!data.compact && !!n.entry?.length && (
         <span className="nact">
-          ⏎{n.entry.join(",")}
+          <Icon name="enter" size={10} />
+          {n.entry.join(",")}
         </span>
       )}
     </div>
@@ -101,8 +103,8 @@ function Rows({ data }: { data: RFNodeData }) {
             <div className="erow-top">
               <span className="ev">{e.event}</span>
               {e.guard && <span className="grd">[{e.guard}]</span>}
-              {e.internal && <span className="intl">⟳</span>}
-              {r.condMeta && <span className="gate-ind">🔒</span>}
+              {e.internal && <Icon name="loop" size={10} className="intl" />}
+              {r.condMeta && <Icon name="lock" size={10} className="gate-ind" />}
             </div>
             {acts.length > 0 && (
               <div className="erow-acts">/{acts.join(", ")}</div>
@@ -120,7 +122,7 @@ function Badges({ data }: { data: RFNodeData }) {
     <div className="nbadges">
       {data.vm.badges.map((ev) => (
         <span key={ev} className="badge-ev">
-          ⊗ {ev}
+          <Icon name="global" size={10} /> {ev}
         </span>
       ))}
     </div>
@@ -193,7 +195,7 @@ export function ParallelNode({ data }: P) {
       <TargetHandle />
       <div className="swimlane-label">
         {n.initial && <InitialDot id={n.id} />}
-        <span className="swimlane-icon">⊞</span>
+        <Icon name="parallel" size={12} className="swimlane-icon" />
         {n.label}
       </div>
       <SourceHandles data={data} />
