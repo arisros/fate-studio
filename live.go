@@ -12,9 +12,10 @@
 package studio
 
 import (
-	"github.com/arisros/fate-studio/core"
 	"github.com/arisros/fate/describe"
 	"github.com/arisros/fate/engine"
+
+	"github.com/arisros/fate-studio/core"
 )
 
 // Entry is one registered machine. See [core.Entry].
