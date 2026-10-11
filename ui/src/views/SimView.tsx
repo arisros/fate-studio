@@ -6,6 +6,7 @@ import type { CondMeta, Graph, GraphNode, LiveSnapshot, SimFrame } from "../type
 import { LazyChart as Chart } from "../graph/render/LazyChart";
 import { StudioCtx } from "../graph/studioCtx";
 import { useSimStream } from "../sse";
+import { useSessionRestore } from "../restore";
 import { activeFromPath } from "../graph/active";
 import { eventsFromGraph } from "../graph/model/events";
 import { useTheme } from "../theme";
@@ -233,9 +234,11 @@ export function SimView() {
   const { snapshot, conn } = useSimStream(name);
   const replayed = useRef(false);
 
-  useEffect(() => {
+  const loadGraph = useCallback(() => {
     api.graph(name).then(setGraph).catch((e) => toast(String(e), "err"));
   }, [name, toast]);
+  useEffect(loadGraph, [loadGraph]);
+  useSessionRestore(name, snapshot, loadGraph);
 
   const snap: SimFrame | null = snapshot;
   const active = useMemo(() => activeFromPath(snap?.path ?? ""), [snap?.path]);

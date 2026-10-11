@@ -1,4 +1,4 @@
-import type { Graph, MachineInfo, SimFrame, VersionInfo } from "./types";
+import type { Graph, MachineInfo, ReplayResult, SimFrame, SimStep, VersionInfo } from "./types";
 
 async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url, { credentials: "same-origin" });
@@ -46,17 +46,37 @@ export const api = {
     return (await r.json()) as SimFrame;
   },
 
+  async replay(name: string, steps: SimStep[]): Promise<ReplayResult> {
+    const r = await fetch(`sim/${encodeURIComponent(name)}/replay`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ steps }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return (await r.json()) as ReplayResult;
+  },
+
   timeline: (name: string) =>
     getJSON<{ events: string[] }>(`sim/${encodeURIComponent(name)}/timeline`).then((r) => r.events ?? []),
 
   exportURL: (name: string) => `sim/${encodeURIComponent(name)}/export`,
 
   // onGraphChanged opens the server-global /events SSE stream and invokes cb
-  // with the affected machine name whenever a watched snapshot is hot-reloaded.
-  // Returns an unsubscribe function. Used by the snapshot viewer for live reload.
-  onGraphChanged(cb: (name: string) => void): () => void {
+  // with the affected machine name whenever a watched snapshot is hot-reloaded,
+  // and with no name when the stream comes back after a drop: the server was
+  // restarted, so any chart may have changed.
+  onGraphChanged(cb: (name?: string) => void): () => void {
     const es = new EventSource("events", { withCredentials: true });
+    let dropped = false;
     es.addEventListener("graph-changed", (e) => cb((e as MessageEvent).data as string));
+    es.onerror = () => {
+      dropped = true;
+    };
+    es.onopen = () => {
+      if (dropped) cb();
+      dropped = false;
+    };
     return () => es.close();
   },
 };
