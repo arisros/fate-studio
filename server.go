@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arisros/fate-studio/core"
 	"github.com/arisros/fate/render"
+
+	"github.com/arisros/fate-studio/core"
 )
 
 // Server is an embeddable statechart studio. Construct with NewServer,
