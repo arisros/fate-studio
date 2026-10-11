@@ -24,6 +24,10 @@ export const api = {
   version: () => getJSON<VersionInfo>("api/version"),
   graph: (name: string) => getJSON<Graph>(`m/${encodeURIComponent(name)}/graph`),
   sources: (name: string) => getJSON<MachineLinks>(`m/${encodeURIComponent(name)}/sources`),
+  async openSource(url: string): Promise<void> {
+    const r = await fetch(url, { method: "POST", credentials: "same-origin" });
+    if (!r.ok) throw new Error((await r.text()).trim());
+  },
   describe: (name: string) => getJSON<unknown>(`m/${encodeURIComponent(name)}/describe`),
 
   send: (name: string, event: string) =>

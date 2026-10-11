@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { api } from "./api";
 import { Icon } from "./icons";
+import { useToast } from "./toast";
 import type { EdgeLinks, MachineLinks, SourceLink } from "./types";
 
 const SourcesCtx = createContext<MachineLinks | null>(null);
@@ -38,12 +39,20 @@ export const shortFile = (link: SourceLink) => `${link.file.slice(link.file.last
 // a transition row sends its event. Only the labelled toolbar form carries a
 // native title: inside the chart the studio's own tooltip is the only one.
 export function SourceButtons({ link, label = false }: { link?: SourceLink | null; label?: boolean }) {
-  if (!link || (!link.editor && !link.permalink)) return null;
+  const toast = useToast();
+  if (!link || (!link.editor && !link.open && !link.permalink)) return null;
   const where = shortFile(link);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const open = () => api.openSource(link.open!).catch((e: Error) => toast(`Could not open ${where}: ${e.message}`, "err"));
   return (
     <span className={`src${label ? " src-labelled" : ""}`} onClick={stop}>
-      {link.editor && (
+      {link.open && (
+        <button type="button" className="src-btn" onClick={open} title={label ? `Open ${where} in your editor` : undefined} aria-label={`Open ${where} in your editor`}>
+          <Icon name="code" size={label ? 14 : 12} />
+          {label && <span>{where}</span>}
+        </button>
+      )}
+      {link.editor && !link.open && (
         <a className="src-btn" href={link.editor} title={label ? `Open ${where} in your editor` : undefined} aria-label={`Open ${where} in your editor`}>
           <Icon name="code" size={label ? 14 : 12} />
           {label && <span>{where}</span>}
@@ -59,7 +68,7 @@ export function SourceButtons({ link, label = false }: { link?: SourceLink | nul
           aria-label={`View ${where} on the code host`}
         >
           <Icon name="external" size={label ? 14 : 12} />
-          {label && !link.editor && <span>{where}</span>}
+          {label && !link.editor && !link.open && <span>{where}</span>}
         </a>
       )}
     </span>

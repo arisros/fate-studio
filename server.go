@@ -3,8 +3,10 @@ package studio
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +71,16 @@ func normalizeBasePath(p string) string {
 // elsewhere, or "" to turn editor links off.
 func (s *Server) SetEditorURL(template string) *Server {
 	s.core.SetEditorURL(template)
+	return s
+}
+
+// SetEditorCommand sets a command the studio runs on its own host to open a
+// source file, for an editor with no URL scheme, such as
+// "nvim --server /tmp/nvim.sock --remote {path}". It is split on spaces and run
+// without a shell, with {path} and {line} replaced in each argument. While it
+// is set it takes the place of the editor URL.
+func (s *Server) SetEditorCommand(command string) *Server {
+	s.core.SetEditorCommand(command)
 	return s
 }
 
@@ -162,6 +174,10 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 		s.handleSources(w, r, entry)
 		return
 	}
+	if len(parts) >= 2 && parts[1] == "open" {
+		s.handleOpen(w, r, entry)
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "describe" {
 		w.Header().Set("content-type", "application/json")
 		b, _ := json.MarshalIndent(entry.Build(), "", "  ")
@@ -179,18 +195,38 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 // links and answers with an empty object.
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request, entry Entry) {
 	w.Header().Set("content-type", "application/json")
-	var src describe.MachineSources
-	var ok bool
-	if entry.ProxyURL != "" {
-		src, ok = fetchSources(r.Context(), entry.ProxyURL)
-	} else {
-		src, ok = s.core.Sources(entry.Name)
-	}
+	src, ok := s.sources(r.Context(), entry)
 	if !ok {
 		_, _ = w.Write([]byte("{}\n"))
 		return
 	}
 	_ = json.NewEncoder(w).Encode(s.core.Links(entry.Name, src))
+}
+
+func (s *Server) sources(ctx context.Context, entry Entry) (describe.MachineSources, bool) {
+	if entry.ProxyURL != "" {
+		return fetchSources(ctx, entry.ProxyURL)
+	}
+	return s.core.Sources(entry.Name)
+}
+
+// handleOpen runs the editor command on one of the machine's source links,
+// named by the file and line the link carries.
+func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request, entry Entry) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	line, _ := strconv.Atoi(r.FormValue("line"))
+	src, _ := s.sources(r.Context(), entry)
+	switch err := s.core.Open(entry.Name, src, r.FormValue("file"), line); {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, core.ErrNoEditorCommand), errors.Is(err, core.ErrUnknownSource):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	default:
+		http.Error(w, "editor command: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func fetchSources(ctx context.Context, base string) (describe.MachineSources, bool) {

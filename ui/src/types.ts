@@ -111,6 +111,7 @@ export interface SourceLink {
   line: number;
   func?: string;
   editor?: string; // set only when the file is on the studio's host
+  open?: string; // POST here to open the file with the studio's editor command
   permalink?: string; // the file on the code host at the build's revision
 }
 export interface NodeLinks {

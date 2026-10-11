@@ -29,6 +29,10 @@ type Config struct {
 	// and {line} placeholders. Nil keeps the default (VS Code); an empty string
 	// turns editor links off.
 	EditorURL *string `json:"editorURL,omitempty"`
+	// EditorCommand is a command the studio runs to open a source file, with
+	// {path} and {line} placeholders, for an editor with no URL scheme. When
+	// set it takes the place of EditorURL.
+	EditorCommand string `json:"editorCommand,omitempty"`
 }
 
 // LoadConfig reads and parses a JSON config file.
