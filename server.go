@@ -1,28 +1,16 @@
 package studio
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/arisros/fate/describe"
+	"github.com/arisros/fate-studio/core"
 	"github.com/arisros/fate/render"
 )
-
-// Entry is one registered machine. Build returns the static descriptor;
-// BuildLive (optional) returns a fresh live actor for the simulator;
-// ProxyURL (optional) forwards /sim/{name}/* to a remote fate httphandler.
-// ProxyURL takes precedence over BuildLive when both are set.
-type Entry struct {
-	Name      string
-	Summary   string
-	Build     func() describe.MachineDescriptor
-	BuildLive func() LiveInstance // nil = static-only, no local simulator
-	ProxyURL  string              // remote fate httphandler base URL
-}
 
 // Server is an embeddable statechart studio. Construct with NewServer,
 // register machines with Register, then ListenAndServe or mount Handler.
@@ -34,17 +22,7 @@ type Server struct {
 	title    string
 	basePath string
 
-	// entries is guarded by mu: Register and the snapshot hot-reloader mutate it
-	// while request handlers read it concurrently.
-	mu      sync.RWMutex
-	entries []Entry
-
-	// live sessions keyed by machine name (one shared session per machine).
-	sessions *sessionStore
-
-	// events broadcasts server-global SSE messages (e.g. graph-changed on
-	// snapshot hot-reload) to the browser.
-	events *eventHub
+	core *core.Studio
 
 	shellOnce sync.Once
 	shell     []byte
@@ -56,7 +34,7 @@ func NewServer(title string) *Server {
 	if title == "" {
 		title = "fate studio"
 	}
-	return &Server{title: title, basePath: "/", sessions: newSessionStore(), events: newEventHub()}
+	return &Server{title: title, basePath: "/", core: core.New()}
 }
 
 // SetBasePath declares the URL prefix the studio is mounted at, so an embedded
@@ -81,86 +59,37 @@ func normalizeBasePath(p string) string {
 	return "/" + p + "/"
 }
 
-// Register adds a machine. build is required (static view); buildLive is
+// Core returns the studio behind the HTTP server: the registry and the
+// simulation sessions, for a front end other than this one.
+func (s *Server) Core() *core.Studio { return s.core }
+
+// Register adds a machine. Build is required (static view); BuildLive is
 // optional (interactive simulator). Returns the server for chaining.
 func (s *Server) Register(e Entry) *Server {
-	s.mu.Lock()
-	s.entries = append(s.entries, e)
-	s.mu.Unlock()
+	s.core.Register(e)
 	return s
-}
-
-// replaceEntry inserts a snapshot entry, or updates the existing entry of the
-// same name while keeping its ProxyURL. It refuses to replace an entry with a
-// live simulator, so a snapshot cannot shadow a registered machine.
-func (s *Server) replaceEntry(e Entry) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i := range s.entries {
-		cur := &s.entries[i]
-		if cur.Name != e.Name {
-			continue
-		}
-		if cur.BuildLive != nil {
-			return fmt.Errorf("%q is already registered with a live simulator", e.Name)
-		}
-		if e.ProxyURL == "" {
-			e.ProxyURL = cur.ProxyURL
-		}
-		*cur = e
-		return nil
-	}
-	s.entries = append(s.entries, e)
-	return nil
-}
-
-func (s *Server) lookup(name string) (Entry, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, e := range s.entries {
-		if e.Name == name {
-			return e, true
-		}
-	}
-	return Entry{}, false
 }
 
 // Machines returns the names of all registered machines. Useful for iterating
 // over all entries to apply configuration (e.g. reading proxy env vars).
-func (s *Server) Machines() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	names := make([]string, 0, len(s.entries))
-	for _, e := range s.entries {
-		names = append(names, e.Name)
-	}
-	return names
-}
+func (s *Server) Machines() []string { return s.core.Machines() }
 
 // SetProxyURL points a registered machine's simulator at a remote fate
 // httphandler. Call it after LoadSnapshots. It reports false when no machine
 // has that name.
-func (s *Server) SetProxyURL(name, url string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i := range s.entries {
-		if s.entries[i].Name == name {
-			s.entries[i].ProxyURL = url
-			return true
-		}
-	}
-	return false
-}
+func (s *Server) SetProxyURL(name, url string) bool { return s.core.SetProxyURL(name, url) }
 
-// entryList returns a snapshot copy of the registered entries under the read
-// lock — safe to range over without holding the lock.
-func (s *Server) entryList() []Entry {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Entry, len(s.entries))
-	copy(out, s.entries)
-	return out
-}
+// LoadSnapshots registers every <dir>/*.json file as a static (non-live)
+// machine: a descriptor snapshot emitted by an implementation's
+// `//go:generate` step (see fate/snapshot.Emit). It returns the number of
+// machines registered; a malformed file is reported in the error while the
+// valid ones are still registered.
+func (s *Server) LoadSnapshots(dir string) (int, error) { return s.core.LoadSnapshots(dir) }
+
+// Watch hot-reloads snapshot machines from the given dirs until ctx is
+// cancelled, telling connected browsers to refetch a chart that changed. Call
+// it in a goroutine.
+func (s *Server) Watch(ctx context.Context, dirs ...string) { s.core.Watch(ctx, dirs...) }
 
 // Handler returns an http.Handler with all studio routes mounted.
 func (s *Server) Handler() http.Handler {
@@ -203,7 +132,7 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.SplitN(rest, "/", 3)
 	name := parts[0]
-	entry, ok := s.lookup(name)
+	entry, ok := s.core.Lookup(name)
 	if !ok {
 		http.NotFound(w, r)
 		return

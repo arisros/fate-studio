@@ -93,7 +93,7 @@ func TestLoadSnapshotFile_KeepsLastGoodOnParseError(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewServer("test")
-	if err := s.loadSnapshotFile(path); err != nil {
+	if _, err := s.LoadSnapshots(dir); err != nil {
 		t.Fatalf("initial load: %v", err)
 	}
 	// Corrupt the file (simulating a partial write) and reload — should error
@@ -101,10 +101,10 @@ func TestLoadSnapshotFile_KeepsLastGoodOnParseError(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{bad"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.loadSnapshotFile(path); err == nil {
+	if _, err := s.LoadSnapshots(dir); err == nil {
 		t.Fatal("expected parse error")
 	}
-	if _, ok := s.lookup("m"); !ok {
+	if _, ok := s.core.Lookup("m"); !ok {
 		t.Fatal("entry was lost after a failed reload")
 	}
 }

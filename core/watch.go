@@ -1,4 +1,4 @@
-package studio
+package core
 
 import (
 	"context"
@@ -21,7 +21,7 @@ const pollInterval = 500 * time.Millisecond
 // and changes the stamp again.
 //
 // It runs until ctx is cancelled. Call it in a goroutine.
-func (s *Server) Watch(ctx context.Context, dirs ...string) {
+func (s *Studio) Watch(ctx context.Context, dirs ...string) {
 	seen := map[string]fileStamp{}
 	s.scanSnapshots(dirs, seen, false)
 
@@ -44,7 +44,7 @@ type fileStamp struct {
 
 // scanSnapshots records every snapshot's stamp in seen and, when reload is
 // set, loads the ones that are new or changed.
-func (s *Server) scanSnapshots(dirs []string, seen map[string]fileStamp, reload bool) {
+func (s *Studio) scanSnapshots(dirs []string, seen map[string]fileStamp, reload bool) {
 	for _, dir := range dirs {
 		matches, err := filepath.Glob(filepath.Join(dir, "*.json"))
 		if err != nil {
@@ -69,7 +69,7 @@ func (s *Server) scanSnapshots(dirs []string, seen map[string]fileStamp, reload 
 			}
 			name := trimExt(filepath.Base(path))
 			log.Printf("watch: loaded %s", name)
-			s.events.publish(name)
+			s.Notify(name)
 		}
 	}
 }

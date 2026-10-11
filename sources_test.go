@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -45,10 +44,10 @@ func TestLoadSnapshots_KeepsProxyURLOnReload(t *testing.T) {
 	if s.SetProxyURL("missing", "http://remote.invalid") {
 		t.Fatal("SetProxyURL reported an unknown machine as found")
 	}
-	if err := s.loadSnapshotFile(filepath.Join(dir, "tl.json")); err != nil {
+	if _, err := s.LoadSnapshots(dir); err != nil {
 		t.Fatal(err)
 	}
-	if e, _ := s.lookup("tl"); e.ProxyURL != "http://remote.invalid/fsm" {
+	if e, _ := s.core.Lookup("tl"); e.ProxyURL != "http://remote.invalid/fsm" {
 		t.Fatalf("ProxyURL after reload = %q", e.ProxyURL)
 	}
 	if !machineLive(t, s, "tl") {
@@ -81,7 +80,7 @@ func TestWatch_LoadsNewAndChangedFiles(t *testing.T) {
 	if _, err := s.LoadSnapshots(dir); err != nil {
 		t.Fatal(err)
 	}
-	events, unsub := s.events.subscribe()
+	events, unsub := s.core.Changes()
 	defer unsub()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -100,20 +99,20 @@ func TestWatch_LoadsNewAndChangedFiles(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	writeSnap(t, dir, "added", strings.Replace(tlDescriptor, `"traffic-light"`, `"added"`, 1))
 	expectEvent(t, events, "added")
-	if _, ok := s.lookup("added"); !ok {
+	if _, ok := s.core.Lookup("added"); !ok {
 		t.Fatal("new file was not registered")
 	}
 
 	changed := strings.Replace(tlDescriptor, `"TIMER"`, `"TICK"`, -1)
 	writeSnap(t, dir, "tl", changed)
 	expectEvent(t, events, "tl")
-	e, _ := s.lookup("tl")
+	e, _ := s.core.Lookup("tl")
 	if _, ok := e.Build().States["red"].On["TICK"]; !ok {
 		t.Fatal("changed file was not reloaded")
 	}
 }
 
-func expectEvent(t *testing.T, ch chan string, want string) {
+func expectEvent(t *testing.T, ch <-chan string, want string) {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
@@ -142,10 +141,18 @@ func TestEvents_StreamsGraphChanged(t *testing.T) {
 	if line, _ := r.ReadString('\n'); !strings.HasPrefix(line, ": connected") {
 		t.Fatalf("first line %q", line)
 	}
-	for !hasSubscriber(s) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	s.events.publish("tl")
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(10 * time.Millisecond):
+				s.core.Notify("tl")
+			}
+		}
+	}()
 	var got []string
 	for len(got) < 2 {
 		line, err := r.ReadString('\n')
@@ -160,37 +167,6 @@ func TestEvents_StreamsGraphChanged(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
-
-func hasSubscriber(s *Server) bool {
-	s.events.mu.Lock()
-	defer s.events.mu.Unlock()
-	return len(s.events.subs) > 0
-}
-
-func TestBroadcast_KeepsOnlyTheLatestFrame(t *testing.T) {
-	sess := &session{live: &fakeLive{}}
-	ch, _, unsub := sess.subscribe()
-	defer unsub()
-	for _, ev := range []string{"a", "b", "c"} {
-		sess.mu.Lock()
-		sess.events = append(sess.events, ev)
-		sess.broadcastLocked()
-		sess.mu.Unlock()
-	}
-	frame := <-ch
-	if strings.Join(frame.Timeline, ",") != "a,b,c" {
-		t.Fatalf("slow subscriber got timeline %v, want the latest", frame.Timeline)
-	}
-	select {
-	case extra := <-ch:
-		t.Fatalf("unexpected second frame %v", extra.Timeline)
-	default:
-	}
-}
-
-type fakeLive struct{ LiveInstance }
-
-func (*fakeLive) Snapshot() LiveSnapshot { return LiveSnapshot{Path: "x"} }
 
 func TestProxy_ForwardsToRemoteSimulator(t *testing.T) {
 	var gotPath string

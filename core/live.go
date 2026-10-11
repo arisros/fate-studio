@@ -1,0 +1,283 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/arisros/fate/describe"
+	"github.com/arisros/fate/effect"
+	"github.com/arisros/fate/engine"
+	"github.com/arisros/fate/persist"
+	"github.com/arisros/fate/render"
+)
+
+// LiveInstance is a type-erased statechart actor the simulator drives
+// without knowing the concrete Ctx / Evt type parameters. Build one with
+// NewLiveActor.
+type LiveInstance interface {
+	Start(ctx context.Context) error
+	// SendEvent dispatches the named event. Returns an error if the event
+	// name is not recognised.
+	SendEvent(ctx context.Context, eventName string) error
+	// Snapshot returns the current state for SSE delivery.
+	Snapshot() LiveSnapshot
+	// Persist serialises the actor state for export.
+	Persist() ([]byte, error)
+	// Restore replaces the actor state from a persisted snapshot (undo/import).
+	Restore(snapshot []byte) error
+	// AvailableEvents lists the event names sendable from the active state.
+	AvailableEvents() []string
+
+	// PendingTimers lists the delayed ("after") transitions currently armed.
+	PendingTimers() []TimerInfo
+	// FireTimer delivers an elapsed delay for the given timer id.
+	FireTimer(id string) error
+	// PendingInvocations lists the invocations currently awaiting a result.
+	PendingInvocations() []InvokeInfo
+	// ResolveInvocation completes an invocation with the given JSON output
+	// (empty string = null output).
+	ResolveInvocation(id, outputJSON string) error
+	// RejectInvocation fails an invocation with the given error message.
+	RejectInvocation(id, errMsg string) error
+}
+
+// TimerInfo describes one armed delayed transition for the studio UI.
+type TimerInfo struct {
+	ID    string `json:"id"`
+	Delay string `json:"delay"`
+}
+
+// InvokeInfo describes one pending invocation for the studio UI.
+type InvokeInfo struct {
+	ID  string `json:"id"`
+	Src string `json:"src"`
+}
+
+// LiveSnapshot is the JSON payload pushed over SSE after every event. The
+// graph STRUCTURE is fetched once from /m/{name}/graph; the snapshot only
+// carries what changes per event (active path, context, status). The studio
+// re-highlights the already-laid-out canvas — no re-layout per event.
+type LiveSnapshot struct {
+	Path    string              `json:"path"`
+	Context json.RawMessage     `json:"context"`
+	Status  persist.ActorStatus `json:"status"`
+	ASCII   string              `json:"ascii"` // ASCII diagram (CLI / static view)
+	// UIState holds the active states' view models keyed by state path, and
+	// UIStateError why they could not be built. Same keys as fate's httphandler.
+	UIState      map[string]json.RawMessage `json:"ui_state,omitempty"`
+	UIStateError string                     `json:"ui_state_error,omitempty"`
+	Events       []string                   `json:"events"`
+	Timers       []TimerInfo                `json:"timers,omitempty"`
+	Invocations  []InvokeInfo               `json:"invocations,omitempty"`
+}
+
+// liveActor wraps a typed Actor[Ctx, Evt] as a LiveInstance.
+type liveActor[Ctx any, Evt any] struct {
+	machine  *engine.Machine[Ctx, Evt]
+	actor    *engine.Actor[Ctx, Evt]
+	dispatch func(name string) (Evt, error)
+	describe func() describe.MachineDescriptor
+
+	// describe often rebuilds the whole machine, and every snapshot needs the
+	// descriptor; a machine's topology is fixed, so one call is enough.
+	descOnce sync.Once
+	desc     describe.MachineDescriptor
+}
+
+func (e *liveActor[Ctx, Evt]) descriptor() describe.MachineDescriptor {
+	e.descOnce.Do(func() { e.desc = e.describe() })
+	return e.desc
+}
+
+// NewLiveActor builds a LiveInstance from a machine, an event-name
+// dispatcher, and a descriptor function (for diagram rendering). The actor
+// is created in Stopped status; the studio calls Start on first use.
+//
+//   - dispatch maps an event-name string to a typed event, or returns
+//     ErrUnknownEvent for unrecognised names.
+//   - describe returns the machine's MachineDescriptor (usually
+//     machine.Describe()) — used to render the highlighted ASCII diagram
+//     and to enumerate available events at the active state.
+func NewLiveActor[Ctx any, Evt any](
+	m *engine.Machine[Ctx, Evt],
+	dispatch func(name string) (Evt, error),
+	describe func() describe.MachineDescriptor,
+) LiveInstance {
+	return &liveActor[Ctx, Evt]{
+		machine:  m,
+		actor:    engine.NewActor(m),
+		dispatch: dispatch,
+		describe: describe,
+	}
+}
+
+func (e *liveActor[Ctx, Evt]) Start(ctx context.Context) error {
+	return e.actor.Start(ctx)
+}
+
+// Restore rebuilds the actor from a persisted snapshot (used by /undo and
+// /import). The machine is re-used; only the actor instance is replaced.
+func (e *liveActor[Ctx, Evt]) Restore(snapshot []byte) error {
+	a, err := engine.NewActorFromSnapshot(e.machine, snapshot)
+	if err != nil {
+		return err
+	}
+	e.actor = a
+	return nil
+}
+
+func (e *liveActor[Ctx, Evt]) SendEvent(_ context.Context, name string) error {
+	evt, err := e.dispatch(name)
+	if err != nil {
+		return err
+	}
+	return e.actor.Send(context.Background(), evt)
+}
+
+func (e *liveActor[Ctx, Evt]) Snapshot() LiveSnapshot {
+	snap := e.actor.Snapshot()
+	ctxBytes, _ := json.Marshal(snap.Context)
+	d := e.descriptor()
+	activePath := snap.Value.Path()
+	hl := highlightForActivePath(activePath)
+	out := LiveSnapshot{
+		Path:        activePath,
+		Context:     ctxBytes,
+		Status:      snap.Status,
+		ASCII:       render.ASCII(d, render.Options{Highlight: hl}),
+		Events:      e.AvailableEvents(),
+		Timers:      e.PendingTimers(),
+		Invocations: e.PendingInvocations(),
+	}
+	if views, err := e.machine.UIState(snap.Value, snap.Context); err != nil {
+		out.UIStateError = err.Error()
+	} else {
+		out.UIState = views
+	}
+	return out
+}
+
+func (e *liveActor[Ctx, Evt]) PendingTimers() []TimerInfo {
+	pts := e.actor.PendingTimers()
+	out := make([]TimerInfo, 0, len(pts))
+	for _, p := range pts {
+		out = append(out, TimerInfo{ID: string(p.ID), Delay: p.Delay.String()})
+	}
+	return out
+}
+
+func (e *liveActor[Ctx, Evt]) FireTimer(id string) error {
+	if !e.actor.FireTimer(effect.TimerID(id)) {
+		return fmt.Errorf("timer %q is not armed", id)
+	}
+	return nil
+}
+
+func (e *liveActor[Ctx, Evt]) PendingInvocations() []InvokeInfo {
+	pis := e.actor.PendingInvocations()
+	out := make([]InvokeInfo, 0, len(pis))
+	for _, p := range pis {
+		out = append(out, InvokeInfo{ID: string(p.ID), Src: p.Src})
+	}
+	return out
+}
+
+func (e *liveActor[Ctx, Evt]) ResolveInvocation(id, outputJSON string) error {
+	var out interface{}
+	if s := strings.TrimSpace(outputJSON); s != "" {
+		if err := json.Unmarshal([]byte(s), &out); err != nil {
+			return fmt.Errorf("output is not valid JSON: %w", err)
+		}
+	}
+	if !e.actor.ResolveInvocation(effect.InvokeID(id), out) {
+		return fmt.Errorf("invocation %q is not pending", id)
+	}
+	return nil
+}
+
+func (e *liveActor[Ctx, Evt]) RejectInvocation(id, errMsg string) error {
+	if errMsg == "" {
+		errMsg = "rejected from studio"
+	}
+	if !e.actor.RejectInvocation(effect.InvokeID(id), errors.New(errMsg)) {
+		return fmt.Errorf("invocation %q is not pending", id)
+	}
+	return nil
+}
+
+func (e *liveActor[Ctx, Evt]) Persist() ([]byte, error) {
+	return e.actor.Persist()
+}
+
+func (e *liveActor[Ctx, Evt]) AvailableEvents() []string {
+	d := e.descriptor()
+	path := e.actor.Snapshot().Value.Path()
+	seen := map[string]struct{}{}
+	evts := []string{} // marshals as [] rather than null
+	for _, region := range strings.Split(path, " | ") {
+		// The engine resolves an event by walking the active leaf up through
+		// its ancestors, so events declared on a compound parent are sendable.
+		for _, node := range descriptorChainAt(d, strings.TrimSpace(region)) {
+			for k := range node.On {
+				// "*" is the catch-all key: dispatchable, but not an event to offer
+				// as a button, so a state with "*" accepts more than this list.
+				if k == "*" {
+					continue
+				}
+				if _, dup := seen[k]; dup {
+					continue
+				}
+				seen[k] = struct{}{}
+				evts = append(evts, k)
+			}
+		}
+	}
+	sort.Strings(evts)
+	return evts
+}
+
+// ErrUnknownEvent is the canonical error a dispatch func returns for an
+// unrecognised event name. The studio surfaces it as HTTP 400.
+type ErrUnknownEvent struct{ Name string }
+
+func (e ErrUnknownEvent) Error() string { return fmt.Sprintf("unknown event %q", e.Name) }
+
+// highlightForActivePath highlights every active leaf (handles parallel).
+func highlightForActivePath(path string) map[string]rune {
+	if path == "" {
+		return nil
+	}
+	h := map[string]rune{}
+	for _, region := range strings.Split(path, " | ") {
+		h[strings.TrimSpace(region)] = '▶'
+	}
+	return h
+}
+
+// descriptorChainAt returns the node at a dot-path and each of its ancestors,
+// outermost first, or nil if the path does not resolve.
+func descriptorChainAt(d describe.MachineDescriptor, path string) []describe.StateNodeDescriptor {
+	if path == "" {
+		return nil
+	}
+	segs := strings.Split(path, ".")
+	cur, ok := d.States[segs[0]]
+	if !ok {
+		return nil
+	}
+	chain := []describe.StateNodeDescriptor{cur}
+	for _, s := range segs[1:] {
+		next, ok := cur.States[s]
+		if !ok {
+			return nil
+		}
+		cur = next
+		chain = append(chain, cur)
+	}
+	return chain
+}

@@ -1,4 +1,4 @@
-package studio
+package core
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 //
 // Returns the number of machines registered. A malformed file is skipped with a
 // returned error wrapping all failures, but valid files are still registered.
-func (s *Server) LoadSnapshots(dir string) (int, error) {
+func (s *Studio) LoadSnapshots(dir string) (int, error) {
 	matches, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	if err != nil {
 		return 0, fmt.Errorf("glob %s: %w", dir, err)
@@ -42,7 +42,7 @@ func (s *Server) LoadSnapshots(dir string) (int, error) {
 // The machine name is the file's base name without extension. On a parse error
 // the previously registered entry (if any) is left untouched, so a hot-reload
 // that catches a half-written file never blanks a working chart.
-func (s *Server) loadSnapshotFile(path string) error {
+func (s *Studio) loadSnapshotFile(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
