@@ -5,4 +5,4 @@ module github.com/arisros/fate-studio
 
 go 1.24
 
-require github.com/arisros/fate v0.13.0
+require github.com/arisros/fate v0.13.1-0.20261011035719-c13d7b2c9838

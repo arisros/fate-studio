@@ -116,6 +116,9 @@ func NewLiveActor[Ctx any, Evt any](
 	}
 }
 
+// Sources implements [Sourced].
+func (e *liveActor[Ctx, Evt]) Sources() describe.MachineSources { return e.machine.Sources() }
+
 func (e *liveActor[Ctx, Evt]) Start(ctx context.Context) error {
 	return e.actor.Start(ctx)
 }

@@ -1,6 +1,7 @@
 import { Handle, Position, type NodeProps, useReactFlow } from "@xyflow/react";
 import { Icon } from "../../icons";
 import { useStudio } from "../studioCtx";
+import { SourceButtons, edgeLink, useSources } from "../../sources";
 import {
   TARGET_HANDLE_ID,
   COMPACT_SOURCE_ID,
@@ -60,6 +61,7 @@ function SourceHandles({ data }: { data: RFNodeData }) {
 
 function Header({ data }: { data: RFNodeData }) {
   const n = data.vm.node;
+  const links = useSources();
   return (
     <div className="nhead">
       {n.initial && <InitialDot id={n.id} />}
@@ -76,12 +78,14 @@ function Header({ data }: { data: RFNodeData }) {
           {n.entry.join(",")}
         </span>
       )}
+      <SourceButtons link={links?.nodes?.[n.id]?.self} />
     </div>
   );
 }
 
 function Rows({ data }: { data: RFNodeData }) {
   const { sendable, interactive, onSend } = useStudio();
+  const links = useSources();
   if (data.compact || !data.vm.rows.length) return null;
   return (
     <div className="nrows">
@@ -107,6 +111,7 @@ function Rows({ data }: { data: RFNodeData }) {
               {e.shadowed && <Icon name="warning" size={10} className="dead-ind" />}
               {e.internal && <Icon name="loop" size={10} className="intl" />}
               {r.condMeta && <Icon name="lock" size={10} className="gate-ind" />}
+              <SourceButtons link={edgeLink(links?.edges?.[e.id])} />
             </div>
             {acts.length > 0 && (
               <div className="erow-acts">/{acts.join(", ")}</div>

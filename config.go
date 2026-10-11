@@ -14,7 +14,8 @@ import (
 //	  "addr": ":8090",
 //	  "snapshots": ["./.fate", "../billing/.fate"],
 //	  "watch": true,
-//	  "proxyURLs": {"checkout": "http://localhost:8081/fsm/checkout"}
+//	  "proxyURLs": {"checkout": "http://localhost:8081/fsm/checkout"},
+//	  "editorURL": "vscode://file{path}:{line}"
 //	}
 type Config struct {
 	Title     string   `json:"title,omitempty"`
@@ -24,6 +25,10 @@ type Config struct {
 	// ProxyURLs maps machine names to their remote fate httphandler base URLs.
 	// When set, the live simulator for that machine forwards to the remote handler.
 	ProxyURLs map[string]string `json:"proxyURLs,omitempty"`
+	// EditorURL is the URL that opens a source file in an editor, with {path}
+	// and {line} placeholders. Nil keeps the default (VS Code); an empty string
+	// turns editor links off.
+	EditorURL *string `json:"editorURL,omitempty"`
 }
 
 // LoadConfig reads and parses a JSON config file.

@@ -104,6 +104,34 @@ export interface SimStep {
   input?: string; // a resolve's output or a reject's error, kept for replay
 }
 
+// SourceLink is one place in the code and the URLs that open it. Mirrors
+// core/source.go.
+export interface SourceLink {
+  file: string; // import path + file name
+  line: number;
+  func?: string;
+  editor?: string; // set only when the file is on the studio's host
+  permalink?: string; // the file on the code host at the build's revision
+}
+export interface NodeLinks {
+  self?: SourceLink;
+  entry?: (SourceLink | null)[];
+  exit?: (SourceLink | null)[];
+}
+export interface EdgeLinks {
+  self?: SourceLink;
+  guard?: SourceLink;
+  actions?: (SourceLink | null)[];
+}
+// MachineLinks is GET m/{name}/sources, keyed by graph node and edge ids. It is
+// an empty object for a machine with no known source.
+export interface MachineLinks {
+  machine?: SourceLink;
+  modified?: boolean; // built with uncommitted changes: lines may be off
+  nodes?: Record<string, NodeLinks>;
+  edges?: Record<string, EdgeLinks>;
+}
+
 // ReplayResult is the frame after POST sim/{name}/replay plus how far it got.
 export interface ReplayResult extends SimFrame {
   replay: { applied: number; total: number; error?: string };

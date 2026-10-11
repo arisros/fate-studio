@@ -41,6 +41,7 @@ A hosted instance runs at
 - [Run the demo server](#run-the-demo-server)
 - [Demos](#demos)
 - [Embed it in your own program](#embed-it-in-your-own-program)
+- [From the chart to the code](#from-the-chart-to-the-code)
 - [Design](#design)
 - [Tests](#tests)
 - [License](#license)
@@ -131,6 +132,30 @@ The UI follows a small design language captured in [DESIGN.md](DESIGN.md), a
 violet-midnight palette with an electric-lime accent. The UI is a Vite + React
 app under `ui/`; `make ui` builds it into `assets/`, which is committed and
 embedded, so the Go build needs no Node toolchain and makes no external request.
+
+## From the chart to the code
+
+Every state, transition, guard and action in a live machine links back to the
+Go that defines it. Hover a node or a transition row for two buttons: open the
+file in your editor at that line, and view it on GitHub or GitLab at the commit
+the binary was built from. The machine's own file and line sit in the toolbar.
+
+Editor links open VS Code by default and appear only when the source is on the
+host the studio runs on. Point them elsewhere with `--editor-url`, the
+`editorURL` config key or `Server.SetEditorURL`:
+
+```sh
+fate-studio --editor-url "idea://open?file={path}&line={line}"
+fate-studio --editor-url "vscode://vscode-remote/ssh-remote+devbox{path}:{line}"
+```
+
+States and transitions are found by reading the machine's source file, so a
+state assembled by a helper function may link to the nearest line that names it,
+or to nothing. A snapshot has no code behind it and shows no links unless it is
+proxied to a fate `httphandler`, which serves the locations at `/sources`.
+
+When the program is rebuilt and restarted, the simulator replays your steps
+against the new machine, so an edit does not send you back to the first state.
 
 The studio's logic (the machine registry, snapshot loading and simulation
 sessions) lives in the `core` package and has no HTTP in it. The server in the
