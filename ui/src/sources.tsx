@@ -35,7 +35,8 @@ export const shortFile = (link: SourceLink) => `${link.file.slice(link.file.last
 
 // SourceButtons renders "open in editor" and "view on the code host" for one
 // place in the code. Clicks never reach the chart underneath, where a click on
-// a transition row sends its event.
+// a transition row sends its event. Only the labelled toolbar form carries a
+// native title: inside the chart the studio's own tooltip is the only one.
 export function SourceButtons({ link, label = false }: { link?: SourceLink | null; label?: boolean }) {
   if (!link || (!link.editor && !link.permalink)) return null;
   const where = shortFile(link);
@@ -43,7 +44,7 @@ export function SourceButtons({ link, label = false }: { link?: SourceLink | nul
   return (
     <span className={`src${label ? " src-labelled" : ""}`} onClick={stop}>
       {link.editor && (
-        <a className="src-btn" href={link.editor} title={`Open ${where} in your editor`} aria-label={`Open ${where} in your editor`}>
+        <a className="src-btn" href={link.editor} title={label ? `Open ${where} in your editor` : undefined} aria-label={`Open ${where} in your editor`}>
           <Icon name="code" size={label ? 14 : 12} />
           {label && <span>{where}</span>}
         </a>
@@ -54,7 +55,7 @@ export function SourceButtons({ link, label = false }: { link?: SourceLink | nul
           href={link.permalink}
           target="_blank"
           rel="noreferrer"
-          title={`View ${where} on the code host`}
+          title={label ? `View ${where} on the code host` : undefined}
           aria-label={`View ${where} on the code host`}
         >
           <Icon name="external" size={label ? 14 : 12} />

@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arisros/fate/describe"
+
 	"github.com/arisros/fate-studio/core"
 	"github.com/arisros/fate-studio/internal/demos"
-	"github.com/arisros/fate/describe"
 )
 
 const demoFile = "github.com/arisros/fate-studio/internal/demos/workflows.go"
