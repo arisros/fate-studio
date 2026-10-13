@@ -32,6 +32,7 @@ type Studio struct {
 	sessions  *sessionStore
 	changes   *hub
 	editorURL string
+	editorCmd []string
 }
 
 // New returns an empty Studio.

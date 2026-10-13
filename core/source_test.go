@@ -1,8 +1,10 @@
 package core_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -205,3 +207,46 @@ func TestLinks_Permalinks(t *testing.T) {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+func TestOpen_RunsTheEditorCommandOnALinkedPlace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell script as the editor")
+	}
+	s := demoStudio(t)
+	src, _ := s.Sources("ticket")
+	if err := s.Open("ticket", src, src.Machine.File, src.Machine.Line); !errors.Is(err, core.ErrNoEditorCommand) {
+		t.Fatalf("without a command: %v", err)
+	}
+
+	dir := t.TempDir()
+	out := filepath.Join(dir, "opened")
+	editor := filepath.Join(dir, "editor")
+	script := "#!/bin/sh\nif [ \"$1\" = fail ]; then echo no server >&2; exit 1; fi\necho \"$1 $2\" > " + out + "\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	s.SetEditorCommand(editor + " {path} +{line}")
+	link := s.Links("ticket", src).Machine
+	if link.Editor != "" || !strings.HasPrefix(link.Open, "m/ticket/open?file=") {
+		t.Fatalf("link = %+v, want Open in place of Editor", link)
+	}
+	if err := s.Open("ticket", src, link.File, link.Line); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := src.Machine.Path + " +" + strconv.Itoa(link.Line); strings.TrimSpace(string(got)) != want {
+		t.Errorf("editor ran with %q, want %q", got, want)
+	}
+
+	if err := s.Open("ticket", src, "/etc/passwd", 1); !errors.Is(err, core.ErrUnknownSource) {
+		t.Errorf("a place the studio never reported: %v", err)
+	}
+	s.SetEditorCommand(editor + " fail")
+	if err := s.Open("ticket", src, link.File, link.Line); err == nil || err.Error() != "no server" {
+		t.Errorf("a failing editor: %v, want its output", err)
+	}
+}

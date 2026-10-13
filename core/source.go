@@ -1,12 +1,16 @@
 package core
 
 import (
+	"errors"
+	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/arisros/fate/describe"
 	"github.com/arisros/fate/render"
@@ -25,8 +29,14 @@ type SourceLink struct {
 	// Editor opens the file in a local editor. It is set only when the file
 	// exists on the host the studio runs on.
 	Editor string `json:"editor,omitempty"`
+	// Open is the studio URL to POST to, relative to the studio's base path,
+	// that opens the file with the editor command. It replaces Editor when an
+	// editor command is set.
+	Open string `json:"open,omitempty"`
 	// Permalink opens the file on the code host at the revision of the build.
 	Permalink string `json:"permalink,omitempty"`
+
+	path string
 }
 
 // MachineLinks links a machine's chart to its code, keyed by the ids of
@@ -72,6 +82,90 @@ func (s *Studio) SetEditorURL(template string) {
 	s.mu.Unlock()
 }
 
+// SetEditorCommand sets a command the studio runs on its own host to open a
+// source file, for an editor that has no URL scheme. The command is split on
+// spaces and run without a shell; {path} and {line} are replaced in each
+// argument. While it is set, links carry Open instead of Editor. An empty
+// command turns it off.
+func (s *Studio) SetEditorCommand(command string) {
+	s.mu.Lock()
+	s.editorCmd = strings.Fields(command)
+	s.mu.Unlock()
+}
+
+// ErrNoEditorCommand is returned by Open when no editor command is set.
+var ErrNoEditorCommand = errors.New("studio: no editor command is set")
+
+// ErrUnknownSource is returned by Open for a place that is not one of the
+// machine's own source links.
+var ErrUnknownSource = errors.New("studio: not a source location of this machine")
+
+// editorWait is how long Open waits for the editor command to report a
+// failure. A command still running after that is left to finish on its own.
+const editorWait = 3 * time.Second
+
+// Open runs the editor command on one of the named machine's source links,
+// identified by the File and Line the link carries. It opens only places the
+// studio itself reported, never a path the caller made up.
+func (s *Studio) Open(name string, src describe.MachineSources, file string, line int) error {
+	s.mu.RLock()
+	command := s.editorCmd
+	s.mu.RUnlock()
+	if len(command) == 0 {
+		return ErrNoEditorCommand
+	}
+	link := s.Links(name, src).find(file, line)
+	if link == nil {
+		return ErrUnknownSource
+	}
+	fill := strings.NewReplacer("{path}", link.path, "{line}", strconv.Itoa(link.Line))
+	args := make([]string, len(command))
+	for i, a := range command {
+		args[i] = fill.Replace(a)
+	}
+	cmd := exec.Command(args[0], args[1:]...) //nolint:gosec // the operator's own command, on the studio's own source files
+	var out strings.Builder
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if msg := strings.TrimSpace(out.String()); err != nil && msg != "" {
+			return errors.New(msg)
+		}
+		return err
+	case <-time.After(editorWait):
+		return nil
+	}
+}
+
+func (l MachineLinks) find(file string, line int) *SourceLink {
+	match := func(c *SourceLink) bool {
+		return c != nil && c.path != "" && c.File == file && c.Line == line
+	}
+	if match(l.Machine) {
+		return l.Machine
+	}
+	for _, n := range l.Nodes {
+		for _, c := range append(append([]*SourceLink{n.Self}, n.Entry...), n.Exit...) {
+			if match(c) {
+				return c
+			}
+		}
+	}
+	for _, e := range l.Edges {
+		for _, c := range append([]*SourceLink{e.Self, e.Guard}, e.Actions...) {
+			if match(c) {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
 // Sources returns where the named machine is written, as its live instance
 // reports it. It reports false for a machine with no local simulator.
 func (s *Studio) Sources(name string) (describe.MachineSources, bool) {
@@ -92,6 +186,9 @@ func (s *Studio) Sources(name string) (describe.MachineSources, bool) {
 func (s *Studio) Links(name string, src describe.MachineSources) MachineLinks {
 	s.mu.RLock()
 	r := linker{editorURL: s.editorURL, build: src.Build}
+	if len(s.editorCmd) > 0 {
+		r.open = "m/" + url.PathEscape(name) + "/open"
+	}
 	s.mu.RUnlock()
 
 	out := MachineLinks{Machine: r.link(src.Machine)}
@@ -138,7 +235,9 @@ func (s *Studio) Links(name string, src describe.MachineSources) MachineLinks {
 
 type linker struct {
 	editorURL string
-	build     *describe.SourceBuild
+	// open is the studio URL that runs the editor command, when one is set.
+	open  string
+	build *describe.SourceBuild
 }
 
 func (r linker) links(locs []*describe.SourceLocation) []*SourceLink {
@@ -158,7 +257,11 @@ func (r linker) link(loc *describe.SourceLocation) *SourceLink {
 	}
 	l := &SourceLink{File: loc.File, Line: loc.Line, Func: loc.Func}
 	local := loc.Path != "" && filepath.IsAbs(loc.Path) && fileExists(loc.Path)
-	if local && r.editorURL != "" {
+	switch {
+	case local && r.open != "":
+		l.path = loc.Path
+		l.Open = r.open + "?" + url.Values{"file": {loc.File}, "line": {strconv.Itoa(loc.Line)}}.Encode()
+	case local && r.editorURL != "":
 		p := filepath.ToSlash(loc.Path)
 		if !strings.HasPrefix(p, "/") {
 			p = "/" + p

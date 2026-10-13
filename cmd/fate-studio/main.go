@@ -11,6 +11,7 @@
 //	fate-studio --snapshots ./.fate --watch     # snapshots, reloaded on change
 //	fate-studio --config studio.json            # configure via JSON
 //	fate-studio --editor-url "idea://open?file={path}&line={line}"
+//	fate-studio --editor-cmd "nvim --server /tmp/nvim.sock --remote {path}"
 //
 // A snapshot has no runtime behind it. To simulate one, set a proxy URL to a
 // fate httphandler serving that machine: config proxyURLs, or the environment
@@ -46,6 +47,7 @@ func main() {
 		withDemos = flag.Bool("demos", false, "serve the built-in live demo machines")
 		editorURL = flag.String("editor-url", "", "URL that opens a source file, with {path} and {line} (default VS Code; \"\" turns it off)")
 	)
+	editorCmd := flag.String("editor-cmd", "", "command the studio runs to open a source file, with {path} and {line}; replaces --editor-url")
 	flag.Parse()
 
 	cfg := studio.Config{}
@@ -69,6 +71,8 @@ func main() {
 			cfg.Snapshots = splitDirs(*snapshots)
 		case "editor-url":
 			cfg.EditorURL = editorURL
+		case "editor-cmd":
+			cfg.EditorCommand = *editorCmd
 		}
 	})
 
@@ -99,6 +103,7 @@ func main() {
 	if cfg.EditorURL != nil {
 		srv.SetEditorURL(*cfg.EditorURL)
 	}
+	srv.SetEditorCommand(cfg.EditorCommand)
 	registerDemos := func() {
 		for _, d := range demos.All() {
 			srv.Register(d.Entry())

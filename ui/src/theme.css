@@ -512,7 +512,7 @@ button { font-family: var(--ui); }
 /* Source links: "open in editor" and "view on the code host". Inside a node
    they stay out of the way until the row or header is hovered. */
 .src { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
-.src-btn { display: inline-flex; align-items: center; gap: 6px; height: 20px; min-width: 20px; padding: 0 3px; justify-content: center; border-radius: var(--radius-sm); color: var(--muted); text-decoration: none; cursor: pointer; }
+.src-btn { display: inline-flex; align-items: center; gap: 6px; height: 20px; min-width: 20px; padding: 0 3px; justify-content: center; border-radius: var(--radius-sm); color: var(--muted); text-decoration: none; cursor: pointer; border: 0; background: none; font: inherit; }
 .src-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
 .src-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .src-labelled .src-btn { height: var(--h-control); padding: 0 var(--space-2); font-family: var(--mono); font-size: 11px; }

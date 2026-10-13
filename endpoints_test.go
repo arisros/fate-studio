@@ -358,3 +358,40 @@ func TestSources_LinkAChartToItsCode(t *testing.T) {
 		t.Errorf("nodes = %s, want states located", live["nodes"])
 	}
 }
+
+func TestSources_OpenRunsTheEditorCommand(t *testing.T) {
+	srv := httptest.NewServer(newTestServer().SetEditorCommand("true {path} {line}").Handler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/m/traffic-light/sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var links struct {
+		Machine struct{ Open, Editor string }
+	}
+	err = json.NewDecoder(resp.Body).Decode(&links)
+	resp.Body.Close()
+	if err != nil || links.Machine.Open == "" || links.Machine.Editor != "" {
+		t.Fatalf("links = %+v (%v), want an open URL", links, err)
+	}
+
+	post := func(path string) int {
+		t.Helper()
+		resp, err := http.Post(srv.URL+path, "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := post("/" + links.Machine.Open); got != http.StatusNoContent {
+		t.Errorf("open = %d, want 204", got)
+	}
+	if got := post("/m/traffic-light/open?file=/etc/passwd&line=1"); got != http.StatusNotFound {
+		t.Errorf("open of an unknown place = %d, want 404", got)
+	}
+	if resp, err := http.Get(srv.URL + "/" + links.Machine.Open); err != nil || resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("GET open = %v, want 405", resp.StatusCode)
+	}
+}

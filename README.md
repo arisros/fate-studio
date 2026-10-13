@@ -149,6 +149,19 @@ fate-studio --editor-url "idea://open?file={path}&line={line}"
 fate-studio --editor-url "vscode://vscode-remote/ssh-remote+devbox{path}:{line}"
 ```
 
+An editor with no URL scheme, such as Neovim or Helix in a terminal, is opened
+by a command instead. With `--editor-cmd`, the `editorCommand` config key or
+`Server.SetEditorCommand`, the button asks the studio to run the command on its
+own host:
+
+```sh
+fate-studio --editor-cmd "nvim --server /tmp/nvim.sock --remote {path}"
+```
+
+The command is split on spaces and run without a shell, so point it at a script
+for anything that needs quoting. It only ever opens a place the studio itself
+linked to.
+
 States and transitions are found by reading the machine's source file, so a
 state assembled by a helper function may link to the nearest line that names it,
 or to nothing. A snapshot has no code behind it and shows no links unless it is
