@@ -91,6 +91,9 @@ export interface SimFrame extends LiveSnapshot {
   timeline?: string[];
   // What each step did. Present only on the studio's own simulator frames.
   steps?: SimStep[];
+  // Identifies this run of the simulation; a new value means the server lost
+  // the session, typically because the program was rebuilt.
+  session?: string;
 }
 
 export interface SimStep {
@@ -98,6 +101,12 @@ export interface SimStep {
   label: string;
   from: string; // active path before the step
   to: string; // active path after it
+  input?: string; // a resolve's output or a reject's error, kept for replay
+}
+
+// ReplayResult is the frame after POST sim/{name}/replay plus how far it got.
+export interface ReplayResult extends SimFrame {
+  replay: { applied: number; total: number; error?: string };
 }
 
 export interface MachineInfo {

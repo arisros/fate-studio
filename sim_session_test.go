@@ -388,3 +388,64 @@ func TestSim_FrameCarriesSteps(t *testing.T) {
 		t.Errorf("undo should drop the last step: %+v", undone.Steps)
 	}
 }
+
+func TestSim_ReplayRestoresASessionOnAFreshServer(t *testing.T) {
+	type frame struct {
+		Path    string          `json:"path"`
+		Session string          `json:"session"`
+		Steps   json.RawMessage `json:"steps"`
+		Replay  struct {
+			Applied, Total int
+			Error          string
+		} `json:"replay"`
+	}
+	decode := func(body string) frame {
+		t.Helper()
+		var f frame
+		if err := json.Unmarshal([]byte(body), &f); err != nil {
+			t.Fatalf("decode: %v (%s)", err, body)
+		}
+		return f
+	}
+	replay := func(c *http.Client, base, steps string) frame {
+		t.Helper()
+		resp, err := c.Post(base+"/sim/traffic-light/replay", "application/json", strings.NewReader(`{"steps":`+steps+`}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("replay: %d %s", resp.StatusCode, b)
+		}
+		return decode(string(b))
+	}
+
+	c1, base1, close1 := clientFor(t)
+	post(t, c1, base1+"/sim/traffic-light/send", url.Values{"event": {"NEXT"}})
+	_, body := post(t, c1, base1+"/sim/traffic-light/send", url.Values{"event": {"NEXT"}})
+	before := decode(body)
+	close1()
+
+	c2, base2, close2 := clientFor(t)
+	defer close2()
+	after := replay(c2, base2, string(before.Steps))
+	if after.Path != before.Path {
+		t.Errorf("replayed path %q, want %q", after.Path, before.Path)
+	}
+	if after.Replay.Applied != 2 || after.Replay.Total != 2 || after.Replay.Error != "" {
+		t.Errorf("replay outcome = %+v", after.Replay)
+	}
+	if after.Session == "" || after.Session == before.Session {
+		t.Errorf("a fresh server should report a new session id, got %q then %q", before.Session, after.Session)
+	}
+
+	stale := `[{"kind":"event","label":"NEXT"},{"kind":"event","label":"GONE"},{"kind":"event","label":"NEXT"}]`
+	partial := replay(c2, base2, stale)
+	if partial.Replay.Applied != 1 || partial.Replay.Total != 3 || !strings.Contains(partial.Replay.Error, "GONE") {
+		t.Errorf("partial replay outcome = %+v", partial.Replay)
+	}
+	if partial.Session != after.Session {
+		t.Error("a replay should keep the session id")
+	}
+}

@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -17,6 +19,7 @@ const maxHistory = 500
 // Session is one client's live simulation of one machine. It is safe for
 // concurrent use.
 type Session struct {
+	id    string
 	build func() LiveInstance
 
 	mu       sync.Mutex
@@ -37,6 +40,10 @@ type Frame struct {
 	LiveSnapshot
 	Timeline []string `json:"timeline"`
 	Steps    []Step   `json:"steps"`
+	// Session identifies this run of the simulation. It changes when the
+	// session is lost, such as when the process restarts, which is how a
+	// client knows its steps are gone and can ask for a Replay.
+	Session string `json:"session"`
 }
 
 // Step is one applied step of a session: what was applied and the active
@@ -46,6 +53,9 @@ type Step struct {
 	Label string `json:"label"`
 	From  string `json:"from"`
 	To    string `json:"to"`
+	// Input is what the step was given: a resolve's JSON output or a reject's
+	// error message. It is what lets the step be applied again.
+	Input string `json:"input,omitempty"`
 }
 
 // frameLocked builds the frame for the current state. The mutex must be held,
@@ -56,7 +66,7 @@ func (s *Session) frameLocked() Frame {
 	copy(tl, s.events)
 	steps := make([]Step, len(s.steps))
 	copy(steps, s.steps)
-	return Frame{LiveSnapshot: s.live.Snapshot(), Timeline: tl, Steps: steps}
+	return Frame{LiveSnapshot: s.live.Snapshot(), Timeline: tl, Steps: steps, Session: s.id}
 }
 
 // Frame returns the current frame.
@@ -144,12 +154,41 @@ func (s *Session) FireTimer(id string) error {
 
 // Resolve completes a pending invocation with a JSON output.
 func (s *Session) Resolve(id, output string) error {
-	return s.applyEffect("✓ "+id, Step{Kind: "resolve", Label: id}, func() error { return s.live.ResolveInvocation(id, output) })
+	return s.applyEffect("✓ "+id, Step{Kind: "resolve", Label: id, Input: output}, func() error { return s.live.ResolveInvocation(id, output) })
 }
 
 // Reject fails a pending invocation with an error message.
 func (s *Session) Reject(id, errMsg string) error {
-	return s.applyEffect("✗ "+id, Step{Kind: "reject", Label: id}, func() error { return s.live.RejectInvocation(id, errMsg) })
+	return s.applyEffect("✗ "+id, Step{Kind: "reject", Label: id, Input: errMsg}, func() error { return s.live.RejectInvocation(id, errMsg) })
+}
+
+// Replay starts the machine over and applies steps in order, stopping at the
+// first one the machine refuses. It returns how many were applied and why it
+// stopped. It is how a session survives a rebuild: the steps recorded against
+// the old machine are run against the new one.
+func (s *Session) Replay(ctx context.Context, steps []Step) (int, error) {
+	if err := s.Reset(); err != nil {
+		return 0, err
+	}
+	for i, st := range steps {
+		var err error
+		switch st.Kind {
+		case "event":
+			err = s.Send(ctx, st.Label)
+		case "timer":
+			err = s.FireTimer(st.Label)
+		case "resolve":
+			err = s.Resolve(st.Label, st.Input)
+		case "reject":
+			err = s.Reject(st.Label, st.Input)
+		default:
+			err = fmt.Errorf("unknown step kind %q", st.Kind)
+		}
+		if err != nil {
+			return i, fmt.Errorf("step %d (%s %s): %w", i+1, st.Kind, st.Label, err)
+		}
+	}
+	return len(steps), nil
 }
 
 // Undo reverts the last step. It reports false when there is nothing to undo.
@@ -284,9 +323,15 @@ func (st *sessionStore) getOrCreate(key string, build func() LiveInstance) (*Ses
 	if err := live.Start(context.Background()); err != nil {
 		return nil, fmt.Errorf("actor start: %w", err)
 	}
-	s := &Session{build: build, live: live, lastSeen: time.Now()}
+	s := &Session{id: newSessionID(), build: build, live: live, lastSeen: time.Now()}
 	st.m[key] = s
 	return s, nil
+}
+
+func newSessionID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // reap evicts idle sessions so actors don't accumulate.

@@ -35,11 +35,12 @@ export function MachineView() {
     api.graph(name).then(setGraph).catch((e) => setErr(String(e)));
   }, [name]);
 
-  // Hot-reload: when the server reports this machine's snapshot changed,
-  // refetch the graph so the canvas re-layouts without a full page reload.
+  // Hot-reload: when the server reports this machine's snapshot changed, or
+  // comes back from a restart, refetch the graph so the canvas re-layouts
+  // without a full page reload.
   useEffect(() => {
     return api.onGraphChanged((changed) => {
-      if (changed === name) {
+      if (changed === undefined || changed === name) {
         setVsim(null);
         setVsimPath("");
         setVsimDecision(null);

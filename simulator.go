@@ -100,6 +100,8 @@ func (s *Server) handleSimRoute(w http.ResponseWriter, r *http.Request) {
 		s.handleSimTimeline(w, r, name)
 	case "export":
 		s.handleSimExport(w, r, name)
+	case "replay":
+		s.handleSimReplay(w, r, name)
 	default:
 		http.NotFound(w, r)
 	}
@@ -343,6 +345,48 @@ func (s *Server) handleSimExport(w http.ResponseWriter, r *http.Request, name st
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("content-disposition", fmt.Sprintf(`attachment; filename="%s-snapshot.json"`, name))
 	_, _ = w.Write(b)
+}
+
+// replayResult is the frame after a replay plus how far the replay got.
+type replayResult struct {
+	core.Frame
+	Replay replayOutcome `json:"replay"`
+}
+
+type replayOutcome struct {
+	Applied int    `json:"applied"`
+	Total   int    `json:"total"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleSimReplay starts the session over and applies the posted steps. A step
+// the machine refuses is not an HTTP error: the reply says how many steps were
+// applied and why the replay stopped.
+func (s *Server) handleSimReplay(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	sess, err := s.sessionFor(w, r, name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	var body struct {
+		Steps []core.Step `json:"steps"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		http.Error(w, "replay: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	out := replayOutcome{Total: len(body.Steps)}
+	applied, err := sess.Replay(r.Context(), body.Steps)
+	out.Applied = applied
+	if err != nil {
+		out.Error = err.Error()
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(replayResult{Frame: sess.Frame(), Replay: out})
 }
 
 // scopeCookies narrows cookies set by a proxied simulator to the studio's
