@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/arisros/fate-studio/compare/v0.9.0...v0.10.0) (2026-10-13)
+
+
+### Added
+
+* open source links with a command, for editors without a url scheme ([#33](https://github.com/arisros/fate-studio/issues/33)) ([e670390](https://github.com/arisros/fate-studio/commit/e670390f6bd0037894255b5c8a1555f5f34395ea))
+
 ## [0.9.0](https://github.com/arisros/fate-studio/compare/v0.8.0...v0.9.0) (2026-10-13)
 
 
