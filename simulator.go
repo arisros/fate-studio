@@ -1,7 +1,6 @@
 package studio
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -11,307 +10,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/arisros/fate-studio/core"
 )
-
-// sessionTTL is how long an idle session survives before the reaper evicts it.
-const sessionTTL = 30 * time.Minute
-
-// maxHistory caps the per-session undo stack (defensive — prevents unbounded
-// memory if someone scripts thousands of events).
-const maxHistory = 500
-
-// ----- session -----
-
-// session is one user's live simulation of one machine. Guarded by mu — all
-// access to live / history / events / subs must hold it.
-type session struct {
-	build func() LiveInstance
-
-	mu       sync.Mutex
-	live     LiveInstance
-	subs     []chan simFrame
-	history  [][]byte  // snapshot bytes captured *before* each applied event
-	events   []string  // event names, parallel to history
-	steps    []simStep // what each event did, parallel to history
-	lastSeen time.Time
-}
-
-// simFrame is the single payload every simulator response carries — the SSE
-// stream and the POST endpoints alike. It is the actor snapshot plus the
-// session-level timeline, so a client never has to reconstruct session state
-// it cannot see (a reloaded page used to show an empty timeline while the
-// server still held the full history).
-type simFrame struct {
-	LiveSnapshot
-	Timeline []string  `json:"timeline"`
-	Steps    []simStep `json:"steps"`
-}
-
-// simStep is one applied step of a session: what was applied and the active
-// path on either side of it.
-type simStep struct {
-	Kind  string `json:"kind"` // event, timer, resolve or reject
-	Label string `json:"label"`
-	From  string `json:"from"`
-	To    string `json:"to"`
-}
-
-// frameLocked builds the frame for the current state. The mutex must be held,
-// which is what makes "apply then publish" atomic: two concurrent requests can
-// no longer interleave such that the older snapshot is the one delivered last.
-func (s *session) frameLocked() simFrame {
-	tl := make([]string, len(s.events))
-	copy(tl, s.events)
-	steps := make([]simStep, len(s.steps))
-	copy(steps, s.steps)
-	return simFrame{LiveSnapshot: s.live.Snapshot(), Timeline: tl, Steps: steps}
-}
-
-// frame returns the current frame under lock.
-func (s *session) frame() simFrame {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.frameLocked()
-}
-
-func (s *session) touch() {
-	s.mu.Lock()
-	s.lastSeen = time.Now()
-	s.mu.Unlock()
-}
-
-// applyEvent pushes the pre-event snapshot to history, then dispatches. On
-// dispatch error the history entry is rolled back.
-func (s *session) applyEvent(ctx context.Context, ev string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	before, perr := s.live.Persist()
-	if perr == nil {
-		if len(s.history) >= maxHistory {
-			s.history = s.history[1:]
-			s.events = s.events[1:]
-			s.steps = s.steps[1:]
-		}
-		s.history = append(s.history, before)
-		s.events = append(s.events, ev)
-		s.steps = append(s.steps, simStep{Kind: "event", Label: ev, From: s.live.Snapshot().Path})
-	}
-	if err := s.live.SendEvent(ctx, ev); err != nil {
-		if perr == nil { // roll back the history push
-			s.history = s.history[:len(s.history)-1]
-			s.events = s.events[:len(s.events)-1]
-			s.steps = s.steps[:len(s.steps)-1]
-		}
-		return err
-	}
-	if perr == nil {
-		s.steps[len(s.steps)-1].To = s.live.Snapshot().Path
-	}
-	s.broadcastLocked()
-	return nil
-}
-
-// applyEffect captures the pre-effect snapshot (for undo/timeline), runs fn,
-// and rolls back the history push if fn fails. Used for timer/invocation
-// effects, which advance the machine like events but aren't user events.
-func (s *session) applyEffect(label string, step simStep, fn func() error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	before, perr := s.live.Persist()
-	if perr == nil {
-		if len(s.history) >= maxHistory {
-			s.history = s.history[1:]
-			s.events = s.events[1:]
-			s.steps = s.steps[1:]
-		}
-		step.From = s.live.Snapshot().Path
-		s.history = append(s.history, before)
-		s.events = append(s.events, label)
-		s.steps = append(s.steps, step)
-	}
-	if err := fn(); err != nil {
-		if perr == nil {
-			s.history = s.history[:len(s.history)-1]
-			s.events = s.events[:len(s.events)-1]
-			s.steps = s.steps[:len(s.steps)-1]
-		}
-		return err
-	}
-	if perr == nil {
-		s.steps[len(s.steps)-1].To = s.live.Snapshot().Path
-	}
-	s.broadcastLocked()
-	return nil
-}
-
-func (s *session) fireTimer(id string) error {
-	return s.applyEffect("⏲ after", simStep{Kind: "timer", Label: id}, func() error { return s.live.FireTimer(id) })
-}
-
-func (s *session) resolveInvocation(id, output string) error {
-	return s.applyEffect("✓ "+id, simStep{Kind: "resolve", Label: id}, func() error { return s.live.ResolveInvocation(id, output) })
-}
-
-func (s *session) rejectInvocation(id, errMsg string) error {
-	return s.applyEffect("✗ "+id, simStep{Kind: "reject", Label: id}, func() error { return s.live.RejectInvocation(id, errMsg) })
-}
-
-// undo pops the last event and restores the prior snapshot. Returns false if
-// there is nothing to undo.
-func (s *session) undo() (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.history) == 0 {
-		return false, nil
-	}
-	snap := s.history[len(s.history)-1]
-	s.history = s.history[:len(s.history)-1]
-	s.events = s.events[:len(s.events)-1]
-	s.steps = s.steps[:len(s.steps)-1]
-	if err := s.live.Restore(snap); err != nil {
-		return true, err
-	}
-	s.broadcastLocked()
-	return true, nil
-}
-
-// reset rebuilds a fresh actor in place (keeping SSE subscribers attached) and
-// clears history.
-func (s *session) reset() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	live := s.build()
-	if err := live.Start(context.Background()); err != nil {
-		return err
-	}
-	s.live = live
-	s.history = nil
-	s.events = nil
-	s.steps = nil
-	s.broadcastLocked()
-	return nil
-}
-
-// importSnapshot restores from external snapshot bytes and clears history.
-func (s *session) importSnapshot(b []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.live.Restore(b); err != nil {
-		return err
-	}
-	s.history = nil
-	s.events = nil
-	s.steps = nil
-	s.broadcastLocked()
-	return nil
-}
-
-func (s *session) timeline() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]string, len(s.events))
-	copy(out, s.events)
-	return out
-}
-
-func (s *session) persist() ([]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.live.Persist()
-}
-
-// broadcastLocked publishes the current frame to every subscriber. The mutex
-// must be held, so a subscriber receives exactly the state the mutation
-// produced. Each subscriber holds only the latest frame: an unread older frame
-// is replaced, so a slow client skips ahead instead of stalling the session or
-// ending on a stale state.
-func (s *session) broadcastLocked() {
-	frame := s.frameLocked()
-	for _, ch := range s.subs {
-		select {
-		case <-ch:
-		default:
-		}
-		select {
-		case ch <- frame:
-		default:
-		}
-	}
-}
-
-// subscribe registers a subscriber and returns the current frame taken under
-// the same lock, so no mutation can fall between the two.
-func (s *session) subscribe() (chan simFrame, simFrame, func()) {
-	ch := make(chan simFrame, 1)
-	s.mu.Lock()
-	s.subs = append(s.subs, ch)
-	initial := s.frameLocked()
-	s.mu.Unlock()
-	return ch, initial, func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		for i, c := range s.subs {
-			if c == ch {
-				s.subs = append(s.subs[:i], s.subs[i+1:]...)
-				close(ch)
-				return
-			}
-		}
-	}
-}
-
-// ----- session store (per machine+token) -----
-
-type sessionStore struct {
-	mu sync.Mutex
-	m  map[string]*session // key: machine + "|" + token
-}
-
-func newSessionStore() *sessionStore {
-	st := &sessionStore{m: map[string]*session{}}
-	go st.reap()
-	return st
-}
-
-func (st *sessionStore) getOrCreate(key string, build func() LiveInstance) (*session, error) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if s, ok := st.m[key]; ok {
-		s.lastSeen = time.Now()
-		return s, nil
-	}
-	if build == nil {
-		return nil, fmt.Errorf("no live simulator registered")
-	}
-	live := build()
-	if err := live.Start(context.Background()); err != nil {
-		return nil, fmt.Errorf("actor start: %w", err)
-	}
-	s := &session{build: build, live: live, lastSeen: time.Now()}
-	st.m[key] = s
-	return s, nil
-}
-
-// reap evicts idle sessions so actors don't accumulate.
-func (st *sessionStore) reap() {
-	t := time.NewTicker(5 * time.Minute)
-	defer t.Stop()
-	for range t.C {
-		cutoff := time.Now().Add(-sessionTTL)
-		st.mu.Lock()
-		for k, s := range st.m {
-			s.mu.Lock()
-			idle := s.lastSeen.Before(cutoff)
-			s.mu.Unlock()
-			if idle {
-				delete(st.m, k)
-			}
-		}
-		st.mu.Unlock()
-	}
-}
 
 // ----- token / cookie -----
 
@@ -355,7 +57,7 @@ func (s *Server) handleSimRoute(w http.ResponseWriter, r *http.Request) {
 
 	// ProxyURL: forward all sub-routes to the remote fate httphandler. The
 	// cookie is forwarded transparently so the remote session model is preserved.
-	if entry, ok := s.lookup(name); ok && entry.ProxyURL != "" && sub != "" {
+	if entry, ok := s.core.Lookup(name); ok && entry.ProxyURL != "" && sub != "" {
 		base, err := url.Parse(entry.ProxyURL)
 		if err != nil {
 			http.Error(w, "bad proxy URL: "+err.Error(), http.StatusInternalServerError)
@@ -405,20 +107,18 @@ func (s *Server) handleSimRoute(w http.ResponseWriter, r *http.Request) {
 
 // sessionFor resolves (or creates) the per-browser session, minting the cookie
 // when needed.
-func (s *Server) sessionFor(w http.ResponseWriter, r *http.Request, name string) (*session, error) {
-	entry, ok := s.lookup(name)
-	if !ok {
+func (s *Server) sessionFor(w http.ResponseWriter, r *http.Request, name string) (*core.Session, error) {
+	if _, ok := s.core.Lookup(name); !ok {
 		return nil, fmt.Errorf("unknown machine %q", name)
 	}
-	token := tokenFor(w, r, s.basePath)
-	return s.sessions.getOrCreate(name+"|"+token, entry.BuildLive)
+	return s.core.Session(name, tokenFor(w, r, s.basePath))
 }
 
 // writeSnapResponse returns the current frame — the same shape the SSE stream
 // pushes, so a client has one contract to parse rather than two.
-func writeSnapResponse(w http.ResponseWriter, sess *session) {
+func writeSnapResponse(w http.ResponseWriter, sess *core.Session) {
 	w.Header().Set("content-type", "application/json")
-	_ = json.NewEncoder(w).Encode(sess.frame())
+	_ = json.NewEncoder(w).Encode(sess.Frame())
 }
 
 // handleSimPage serves the SPA shell for /sim/{name}. The session cookie is
@@ -438,7 +138,7 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 	w.Header().Set("cache-control", "no-cache")
 	w.Header().Set("connection", "keep-alive")
 
-	ch, initial, unsub := sess.subscribe()
+	ch, initial, unsub := sess.Subscribe()
 	defer unsub()
 	if err := writeSSE(w, initial); err != nil {
 		return
@@ -457,7 +157,7 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 				return
 			}
 		case <-keepalive.C:
-			sess.touch()
+			sess.Touch()
 			if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
 				return
 			}
@@ -470,7 +170,7 @@ func (s *Server) handleSimStream(w http.ResponseWriter, r *http.Request, name st
 	}
 }
 
-func writeSSE(w io.Writer, frame simFrame) error {
+func writeSSE(w io.Writer, frame core.Frame) error {
 	b, err := json.Marshal(frame)
 	if err != nil {
 		return err
@@ -500,7 +200,7 @@ func (s *Server) handleSimSend(w http.ResponseWriter, r *http.Request, name stri
 		http.Error(w, "missing 'event' field", http.StatusBadRequest)
 		return
 	}
-	if err := sess.applyEvent(r.Context(), evtName); err != nil {
+	if err := sess.Send(r.Context(), evtName); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -523,7 +223,7 @@ func (s *Server) handleSimTimer(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, "missing 'id' field", http.StatusBadRequest)
 		return
 	}
-	if err := sess.fireTimer(id); err != nil {
+	if err := sess.FireTimer(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -547,9 +247,9 @@ func (s *Server) handleSimInvoke(w http.ResponseWriter, r *http.Request, name st
 		return
 	}
 	if r.FormValue("action") == "reject" {
-		err = sess.rejectInvocation(id, r.FormValue("error"))
+		err = sess.Reject(id, r.FormValue("error"))
 	} else {
-		err = sess.resolveInvocation(id, r.FormValue("output"))
+		err = sess.Resolve(id, r.FormValue("output"))
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -568,7 +268,7 @@ func (s *Server) handleSimReset(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	if err := sess.reset(); err != nil {
+	if err := sess.Reset(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -585,7 +285,7 @@ func (s *Server) handleSimUndo(w http.ResponseWriter, r *http.Request, name stri
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	ok, err := sess.undo()
+	ok, err := sess.Undo()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -612,7 +312,7 @@ func (s *Server) handleSimImport(w http.ResponseWriter, r *http.Request, name st
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := sess.importSnapshot(body); err != nil {
+	if err := sess.Import(body); err != nil {
 		http.Error(w, "import: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -626,7 +326,7 @@ func (s *Server) handleSimTimeline(w http.ResponseWriter, r *http.Request, name 
 		return
 	}
 	w.Header().Set("content-type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"events": sess.timeline()})
+	_ = json.NewEncoder(w).Encode(map[string]any{"events": sess.Timeline()})
 }
 
 func (s *Server) handleSimExport(w http.ResponseWriter, r *http.Request, name string) {
@@ -635,7 +335,7 @@ func (s *Server) handleSimExport(w http.ResponseWriter, r *http.Request, name st
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	b, err := sess.persist()
+	b, err := sess.Export()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

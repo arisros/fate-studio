@@ -132,6 +132,11 @@ violet-midnight palette with an electric-lime accent. The UI is a Vite + React
 app under `ui/`; `make ui` builds it into `assets/`, which is committed and
 embedded, so the Go build needs no Node toolchain and makes no external request.
 
+The studio's logic (the machine registry, snapshot loading and simulation
+sessions) lives in the `core` package and has no HTTP in it. The server in the
+root package is one front end over it; `Server.Core()` hands the same studio to
+any other.
+
 ## Tests
 
 ```sh

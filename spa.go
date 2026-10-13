@@ -71,7 +71,7 @@ type machineInfo struct {
 }
 
 func (s *Server) handleAPIMachines(w http.ResponseWriter, _ *http.Request) {
-	entries := s.entryList()
+	entries := s.core.Entries()
 	out := make([]machineInfo, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, machineInfo{Name: e.Name, Summary: e.Summary, Live: e.BuildLive != nil || e.ProxyURL != ""})
