@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/arisros/fate-studio/compare/v0.8.0...v0.9.0) (2026-10-13)
+
+
+### Added
+
+* keep the simulation in place when the server restarts ([#31](https://github.com/arisros/fate-studio/issues/31)) ([a31e964](https://github.com/arisros/fate-studio/commit/a31e964c83c4d53955686fd8fd3f21cbe3d4cb52))
+* link states, transitions, guards and actions to their source ([#32](https://github.com/arisros/fate-studio/issues/32)) ([a2fdbe8](https://github.com/arisros/fate-studio/commit/a2fdbe8b259736a7291e1d30f08f84e11bb70d30))
+
 ## [0.8.0](https://github.com/arisros/fate-studio/compare/v0.7.0...v0.8.0) (2026-10-10)
 
 
