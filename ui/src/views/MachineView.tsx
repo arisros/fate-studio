@@ -8,11 +8,13 @@ import { StudioCtx } from "../graph/studioCtx";
 import { useTheme } from "../theme";
 import { VirtualSimulator, type PendingDecision } from "../graph/sim/virtualSim";
 import { VSimPanel } from "./VSimPanel";
+import { SourceButtons, SourcesProvider, useMachineLinks } from "../sources";
 
 export function MachineView() {
   const { name = "" } = useParams();
   const [graph, setGraph] = useState<Graph | null>(null);
   const [err, setErr] = useState("");
+  const links = useMachineLinks(name, graph);
   const [mode] = useTheme();
   const [vsim, setVsim] = useState<VirtualSimulator | null>(null);
   const [vsimPath, setVsimPath] = useState("");
@@ -76,6 +78,7 @@ export function MachineView() {
         {live && (
           <Link to={`/sim/${encodeURIComponent(name)}`} className="btn primary"><Icon name="play" />Simulate</Link>
         )}
+        <SourceButtons link={links?.machine} label />
         <a href={`m/${encodeURIComponent(name)}/describe`} className="btn ghost" target="_blank" rel="noreferrer">
           JSON descriptor
         </a>
@@ -88,7 +91,9 @@ export function MachineView() {
         {err && <p className="err-box">{err}</p>}
         {graph && (
           <StudioCtx.Provider value={{ interactive: false, sendable: new Set(), onSend: () => {} }}>
-            <Chart machine={name} graph={graph} activePath={vsim ? vsimPath : ""} colorMode={mode} />
+            <SourcesProvider value={links}>
+              <Chart machine={name} graph={graph} activePath={vsim ? vsimPath : ""} colorMode={mode} />
+            </SourcesProvider>
           </StudioCtx.Provider>
         )}
       </div>

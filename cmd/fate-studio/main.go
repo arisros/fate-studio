@@ -10,6 +10,7 @@
 //	fate-studio --demos                         # the live demos
 //	fate-studio --snapshots ./.fate --watch     # snapshots, reloaded on change
 //	fate-studio --config studio.json            # configure via JSON
+//	fate-studio --editor-url "idea://open?file={path}&line={line}"
 //
 // A snapshot has no runtime behind it. To simulate one, set a proxy URL to a
 // fate httphandler serving that machine: config proxyURLs, or the environment
@@ -43,6 +44,7 @@ func main() {
 		title     = flag.String("title", "", "studio title shown in the header")
 		configPth = flag.String("config", "", "path to a JSON config file")
 		withDemos = flag.Bool("demos", false, "serve the built-in live demo machines")
+		editorURL = flag.String("editor-url", "", "URL that opens a source file, with {path} and {line} (default VS Code; \"\" turns it off)")
 	)
 	flag.Parse()
 
@@ -65,6 +67,8 @@ func main() {
 			cfg.Watch = *watch
 		case "snapshots":
 			cfg.Snapshots = splitDirs(*snapshots)
+		case "editor-url":
+			cfg.EditorURL = editorURL
 		}
 	})
 
@@ -92,6 +96,9 @@ func main() {
 	}
 
 	srv := studio.NewServer(cfg.Title)
+	if cfg.EditorURL != nil {
+		srv.SetEditorURL(*cfg.EditorURL)
+	}
 	registerDemos := func() {
 		for _, d := range demos.All() {
 			srv.Register(d.Entry())

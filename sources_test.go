@@ -213,3 +213,51 @@ func TestProxy_ForwardsToRemoteSimulator(t *testing.T) {
 		t.Fatalf("status %d body %s", resp.StatusCode, body)
 	}
 }
+
+func TestSources_SnapshotAndProxiedMachines(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/fsm/tl/sources" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, `{"build":{"module":"github.com/acme/app","revision":"abc123"},"machine":{"file":"github.com/acme/app/flow/light.go","line":12,"path":"/build/flow/light.go"}}`)
+	}))
+	defer remote.Close()
+
+	dir := t.TempDir()
+	writeSnap(t, dir, "tl", tlDescriptor)
+	s := NewServer("test")
+	if _, err := s.LoadSnapshots(dir); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	body := func() string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + "/m/tl/sources")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return strings.TrimSpace(string(b))
+	}
+
+	if got := body(); got != "{}" {
+		t.Errorf("a bare snapshot has no sources, got %s", got)
+	}
+
+	s.SetProxyURL("tl", remote.URL+"/fsm/tl")
+	got := body()
+	if !strings.Contains(got, `"permalink":"https://github.com/acme/app/blob/abc123/flow/light.go#L12"`) {
+		t.Errorf("proxied sources = %s", got)
+	}
+	if strings.Contains(got, `"editor"`) {
+		t.Errorf("a file that is not on this host must not get an editor link: %s", got)
+	}
+
+	remote.Close()
+	if got := body(); got != "{}" {
+		t.Errorf("an unreachable remote should yield no sources, got %s", got)
+	}
+}

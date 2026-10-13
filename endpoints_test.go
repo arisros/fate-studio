@@ -3,6 +3,7 @@ package studio_test
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -325,5 +326,35 @@ func TestServer_DefaultBasePathIsRoot(t *testing.T) {
 	shell := doGet(t, ts.Client(), ts.URL+"/", 200)
 	if !strings.Contains(shell, `<base href="/">`) {
 		t.Errorf(`default shell should carry <base href="/">:\n%s`, shell)
+	}
+}
+
+func TestSources_LinkAChartToItsCode(t *testing.T) {
+	srv := httptest.NewServer(newTestServer().Handler())
+	defer srv.Close()
+
+	get := func(path string) map[string]json.RawMessage {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]json.RawMessage
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		return out
+	}
+
+	live := get("/m/traffic-light/sources")
+	if !strings.Contains(string(live["machine"]), `"file":"github.com/arisros/fate-studio_test/studio_test.go"`) {
+		t.Errorf("machine link = %s", live["machine"])
+	}
+	if !strings.Contains(string(live["machine"]), `"editor":"vscode://file/`) || strings.Contains(string(live["machine"]), "file//") {
+		t.Errorf("editor link = %s", live["machine"])
+	}
+	if !strings.Contains(string(live["nodes"]), `"self"`) {
+		t.Errorf("nodes = %s, want states located", live["nodes"])
 	}
 }

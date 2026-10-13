@@ -29,13 +29,14 @@ type Studio struct {
 	mu      sync.RWMutex
 	entries []Entry
 
-	sessions *sessionStore
-	changes  *hub
+	sessions  *sessionStore
+	changes   *hub
+	editorURL string
 }
 
 // New returns an empty Studio.
 func New() *Studio {
-	return &Studio{sessions: newSessionStore(), changes: newHub()}
+	return &Studio{sessions: newSessionStore(), changes: newHub(), editorURL: DefaultEditorURL}
 }
 
 // Register adds a machine.

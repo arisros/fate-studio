@@ -7,6 +7,7 @@ import { LazyChart as Chart } from "../graph/render/LazyChart";
 import { StudioCtx } from "../graph/studioCtx";
 import { useSimStream } from "../sse";
 import { useSessionRestore } from "../restore";
+import { SourceButtons, SourcesProvider, useMachineLinks } from "../sources";
 import { activeFromPath } from "../graph/active";
 import { eventsFromGraph } from "../graph/model/events";
 import { useTheme } from "../theme";
@@ -239,6 +240,7 @@ export function SimView() {
   }, [name, toast]);
   useEffect(loadGraph, [loadGraph]);
   useSessionRestore(name, snapshot, loadGraph);
+  const links = useMachineLinks(name, graph);
 
   const snap: SimFrame | null = snapshot;
   const active = useMemo(() => activeFromPath(snap?.path ?? ""), [snap?.path]);
@@ -320,6 +322,7 @@ export function SimView() {
       <div className="subbar">
         <span className="mtitle">{name}</span>
         <StatusBadge status={snap?.status ?? "connecting"} conn={conn} />
+        <SourceButtons link={links?.machine} label />
         <div className="spacer" />
         <button className="btn ghost" data-guide="undo" onClick={onUndo}><Icon name="undo" />Undo</button>
         <button className="btn ghost" onClick={onReset}><Icon name="reset" />Reset</button>
@@ -331,7 +334,9 @@ export function SimView() {
         <div className="canvas">
           {graph && (
             <StudioCtx.Provider value={{ interactive: true, sendable, onSend }}>
-              <Chart machine={name} graph={graph} activePath={snap?.path ?? ""} colorMode={mode} />
+              <SourcesProvider value={links}>
+                <Chart machine={name} graph={graph} activePath={snap?.path ?? ""} colorMode={mode} />
+              </SourcesProvider>
             </StudioCtx.Provider>
           )}
         </div>

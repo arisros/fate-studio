@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 const circle = (r: number, cx = 8, cy = 8) => <circle cx={cx} cy={cy} r={r} />;
 
 const paths = {
+  code: <path d="m5.5 4.5-3.5 3.5 3.5 3.5M10.5 4.5 14 8l-3.5 3.5" />,
+  external: <path d="M9 3h4v4M13 3 7.5 8.5M11 9.5V13H3V5h3.5" />,
   undo: <path d="M6 3 3 6l3 3M3 6h6.5a3.5 3.5 0 0 1 0 7H7" />,
   reset: <path d="M3.5 5.6A5.2 5.2 0 1 1 2.8 9M3 2.4v3.4h3.4" />,
   import: <path d="M8 10V2.5M5 5.5l3-3 3 3M2.5 10.5V13h11v-2.5" />,
